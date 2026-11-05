@@ -1,0 +1,10 @@
+## Interface: 16001
+## Title: RivQoL
+## Notes: Riv's personal quality-of-life tweaks for WoW Forever.
+## Author: Riv
+## Version: 0.1.0
+## SavedVariables: RivQoLDB
+## OptionalDeps: EllesmereUI, EllesmereUINameplates
+
+Core.lua
+Modules\FriendlyNames.lua
