@@ -164,7 +164,9 @@ function M.Lookup(name, force)
     end
     pending = p
     silenceKey, silenceUntil, silenceTotals = key, now + TIMEOUT + 1, true
-    if C_FriendList.SetWhoToUi then C_FriendList.SetWhoToUi(true) end
+    -- Answer in chat, not the Who list: on Forever the chat line names the
+    -- subzone ("... - Wildbend River") while the list only has the zone.
+    if C_FriendList.SetWhoToUi then C_FriendList.SetWhoToUi(false) end
 
     D(string.format('sending /who n-"%s" (SetWhoToUi %s, was %s; silenced %d frame(s))', short,
         C_FriendList.SetWhoToUi and "set" or "MISSING", tostring(p.prevToUi), #p.silenced))
@@ -191,8 +193,11 @@ end
 local whoFrame = CreateFrame("Frame")
 -- Records our lookup's answer (zone nil: not found) and ends the query next
 -- frame, so the silenced frames don't get the event that brought it.
-local function Resolve(p, zone)
-    D("answer for", p.name, ":", zone or "not found")
+local function Resolve(p, zone, fromChat)
+    -- The chat line is the more specific answer: a later list update doesn't replace it.
+    if p.gotChat and not fromChat then return end
+    if fromChat then p.gotChat = true end
+    D("answer for", p.name, ":", zone or "not found", fromChat and "(chat)" or "(Who list)")
     cache[p.key] = { zone = zone, at = GetTime() }
     lastResult = { name = p.name, zone = zone, outcome = zone and "found" or "notfound", at = GetTime() }
     silenceUntil = GetTime() + 1   -- still hide the "1 player total" line that follows
@@ -263,7 +268,7 @@ local function ChatFilter(_, _, msg)
         local area = AreaFromWhoLine(msg)
         if area then
             if pending and pending.key == silenceKey then
-                Resolve(pending, area)
+                Resolve(pending, area, true)
             else   -- answered after the list update or the timeout: still worth keeping
                 cache[silenceKey] = { zone = area, at = GetTime() }
                 RefreshAll()
@@ -283,7 +288,7 @@ local function ChatFilter(_, _, msg)
     if not (whoTotalPattern and msg:find(whoTotalPattern)) then return false end
     -- "0 players total": nobody by that name is online (or they're hidden).
     if pending and pending.key == silenceKey and tonumber(msg:match("%d+")) == 0 then
-        Resolve(pending, nil)
+        Resolve(pending, nil, true)
     end
     return true
 end
