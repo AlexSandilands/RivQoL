@@ -22,6 +22,8 @@ Changes to the `.toc` (new files) also need a restart.
 ## Options window
 
 A module list on the left (checkbox = on/off) and the selected module's page on the right.
+Drag the window by its title bar and resize it from the bottom-right corner; size and position are
+saved.
 It uses stock Blizzard templates, so it looks native with no other addons. With EllesmereUI
 installed it is themed through EUI's Skinning API and follows the EUI theme live; turn that off
 per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addons.
@@ -51,7 +53,8 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 - **Always skip / Never skip lists**: drag an item from your bags onto the slot, or Alt-click it in
   your bags while the page is open. An item is on at most one list.
 - **Rules**: an item is skipped when all set conditions of any rule match. A max sell price of 0
-  means any price, and a rule with no conditions does nothing.
+  means any price, and a rule with no conditions does nothing. Click a rule's name to rename it
+  (clear it to go back to "Rule N"); the chat line says which rule, or the skip list, left an item.
 - **Always looted**: coins and currencies; anything on the never-skip list; and, unless it is on the
   skip list, quest items, Rare or better items, items whose info isn't cached yet, and (for rules
   with a price limit) items with no vendor price.

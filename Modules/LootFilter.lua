@@ -43,7 +43,7 @@ local M = {
         enabled = false,    -- it takes over auto-loot, so opt in
         items = {},         -- [itemID] = true: always skip
         never = {},         -- [itemID] = true: always loot
-        rules = {},         -- { class = id|nil, subclass = id|nil, maxQuality = n|nil, maxPrice = copper (0 = any) }
+        rules = {},         -- { name = string|nil, class = id|nil, subclass = id|nil, maxQuality = n|nil, maxPrice = copper (0 = any) }
         announce = true,    -- chat line per skipped item
         -- autoLoot: our auto-loot on/off, seeded from the game's setting
         -- tookOver: true while we hold autoLootDefault at 0
@@ -80,7 +80,14 @@ local function RuleMatches(rule, classID, subclassID, quality, sellPrice)
     return any
 end
 
--- Should this item be left behind? Returns skip, reason.
+-- A rule's display name: its own, or "Rule N".
+function M:RuleName(index)
+    local rule = self.db.rules[index]
+    return (rule and rule.name) or ("Rule " .. index)
+end
+
+-- Should this item be left behind? Returns skip, reason ("list" or "rule"),
+-- and for a rule its index.
 function M:ShouldSkipItem(itemID)
     local db = self.db
     if not itemID then return false end
@@ -100,8 +107,8 @@ function M:ShouldSkipItem(itemID)
     end
     if quality >= RARE or classID == QUEST_CLASS or bindType == BIND_QUEST then return false end
     sellPrice = sellPrice or 0
-    for _, rule in ipairs(db.rules) do
-        if RuleMatches(rule, classID, subclassID, quality, sellPrice) then return true, "rule" end
+    for i, rule in ipairs(db.rules) do
+        if RuleMatches(rule, classID, subclassID, quality, sellPrice) then return true, "rule", i end
     end
     return false
 end
@@ -117,7 +124,7 @@ end
 function M:ShouldSkipSlot(slot)
     if GetLootSlotType(slot) ~= SLOT_ITEM then return false end   -- coins, currency
     local itemID = SlotItemID(slot)
-    return (self:ShouldSkipItem(itemID))
+    return self:ShouldSkipItem(itemID)
 end
 
 ---------------------------------------------------------------------------
@@ -176,9 +183,11 @@ local function FirstReport(slot, itemID)
     return true
 end
 
-local function Announce(link, quantity)
+local function Announce(link, quantity, reason, ruleIndex)
     if not M.db.announce then return end
-    ns.Print("left on corpse:", (link or "?") .. ((quantity and quantity > 1) and ("x" .. quantity) or ""))
+    local why = reason == "rule" and M:RuleName(ruleIndex) or "skip list"
+    ns.Print("left on corpse:", (link or "?") .. ((quantity and quantity > 1) and ("x" .. quantity) or "")
+        .. " |cff999999(" .. why .. ")|r")
 end
 
 local function OnLootReady(clientAutoLoot)
@@ -191,14 +200,15 @@ local function OnLootReady(clientAutoLoot)
     local skippedAny = false
     for slot = GetNumLootItems(), 1, -1 do
         if SlotFilled(slot) then
-            if M:ShouldSkipSlot(slot) then
+            local skip, reason, ruleIndex = M:ShouldSkipSlot(slot)
+            if skip then
                 session.skipped[slot] = true
                 skippedAny = true
                 local itemID, link = SlotItemID(slot)
                 if FirstReport(slot, itemID) then
                     local quantity = select(3, GetLootSlotInfo(slot))
                     M.skippedCount = M.skippedCount + 1
-                    Announce(link, quantity)
+                    Announce(link, quantity, reason, ruleIndex)
                 end
             else
                 LootSlot(slot)
@@ -530,10 +540,38 @@ end
 local function RuleBlock(parent, y, index, rule)
     local W = ns.Widgets
     local _
-    local header = parent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    header:SetPoint("TOPLEFT", 0, y)
-    header:SetText("Rule " .. index)
-    ns.Skin("Font", header)
+    -- Editable name; empty (or the default) means "Rule N".
+    local header = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+    header:SetSize(200, 20)
+    header:SetPoint("TOPLEFT", 6, y)   -- the template's border sits left of its anchor
+    header:SetAutoFocus(false)
+    header:SetMaxLetters(40)
+    header:SetFontObject("GameFontNormal")
+    local function ShowName() header:SetText(M:RuleName(index)); header:SetCursorPosition(0) end
+    header:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    header:SetScript("OnEscapePressed", function(self) self.cancel = true; self:ClearFocus() end)
+    header:SetScript("OnEditFocusLost", function(self)
+        if self.cancel then
+            self.cancel = nil
+        else
+            local name = strtrim(self:GetText() or "")
+            if name == "" or name == ("Rule " .. index) then name = nil end
+            if rule.name ~= name then
+                rule.name = name
+                ns.FireChanged(M.name, "rules")
+            end
+        end
+        ShowName()
+    end)
+    header:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Rule name", 1, 1, 1)
+        GameTooltip:AddLine("Click to rename. Shown in chat when this rule leaves an item behind. Clear it to go back to \"Rule " .. index .. "\".", nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    header:SetScript("OnLeave", GameTooltip_Hide)
+    ShowName()
+    ns.Skin("EditBox", header)
     local delete = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     delete:SetSize(70, 20)
     delete:SetPoint("LEFT", header, "RIGHT", 12, 0)

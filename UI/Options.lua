@@ -4,7 +4,8 @@
 local _, ns = ...
 local W = ns.Widgets
 
-local FRAME_W, FRAME_H = 760, 520
+local FRAME_W, FRAME_H = 760, 520      -- default size; the window can be resized
+local MIN_W, MIN_H = 620, 380
 local SIDEBAR_W = 190
 local TOP, BOTTOM, SIDE = -60, 8, 8     -- inset margins inside the window
 local ROW_H = 26
@@ -58,10 +59,14 @@ local function RefreshPage(page)
     end
 end
 
+-- Width of a page's scroll child for the window's current size.
+local function PageWidth()
+    return frame:GetWidth() - SIDEBAR_W - 2 * SIDE - 6 - 8 - SCROLLBAR_W - 2 * PAGE_PAD
+end
+
 local function BuildPage(name)
     local mod = ns.modules[name]
-    local scroll, content = MakeScroll(frame.PageInset,
-        FRAME_W - SIDEBAR_W - 2 * SIDE - 6 - 8 - SCROLLBAR_W - 2 * PAGE_PAD)
+    local scroll, content = MakeScroll(frame.PageInset, PageWidth())
     scroll:Hide()
     content.rqModule = name
     content.rqWidgets = {}
@@ -111,7 +116,17 @@ local function BuildPage(name)
     return scroll
 end
 
-local function Select(name)
+local Select
+
+-- Widgets size their text to the page width when they are built, so after a
+-- resize the pages are built again (the old ones are hidden and dropped).
+local function RelayoutPages()
+    for _, page in pairs(pages) do page:Hide() end
+    wipe(pages)
+    if selected then Select(selected) end
+end
+
+function Select(name)
     if not ns.modules[name] then name = ns.order[1] end
     if not name then return end
     selected = name
@@ -189,7 +204,8 @@ end
 
 local function Create()
     frame = CreateFrame("Frame", "RivQoLOptionsFrame", UIParent, "ButtonFrameTemplate")
-    frame:SetSize(FRAME_W, FRAME_H)
+    local size = ns.uidb.size
+    frame:SetSize(size and size[1] or FRAME_W, size and size[2] or FRAME_H)
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
     frame:SetClampedToScreen(true)
@@ -211,6 +227,39 @@ local function Create()
     end)
     RestorePosition(frame)
     tinsert(UISpecialFrames, "RivQoLOptionsFrame")
+
+    -- Resize grip in the bottom-right corner.
+    frame:SetResizable(true)
+    local maxW, maxH = UIParent:GetWidth(), UIParent:GetHeight()
+    if frame.SetResizeBounds then
+        frame:SetResizeBounds(MIN_W, MIN_H, maxW, maxH)
+    elseif frame.SetMinResize then
+        frame:SetMinResize(MIN_W, MIN_H)
+        frame:SetMaxResize(maxW, maxH)
+    end
+    local grip = CreateFrame("Button", nil, frame)
+    grip:SetSize(16, 16)
+    grip:SetPoint("BOTTOMRIGHT", -3, 3)
+    grip:SetFrameLevel(frame:GetFrameLevel() + 20)
+    grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    grip:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then frame:StartSizing("BOTTOMRIGHT") end
+    end)
+    grip:SetScript("OnMouseUp", function()
+        frame:StopMovingOrSizing()
+        ns.uidb.size = { math.floor(frame:GetWidth() + 0.5), math.floor(frame:GetHeight() + 0.5) }
+        SavePosition(frame)
+        RelayoutPages()
+    end)
+    grip:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Drag to resize", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    grip:SetScript("OnLeave", GameTooltip_Hide)
+    frame.ResizeGrip = grip
 
     -- Template's Inset becomes the page area; add a matching sidebar inset.
     local pageInset = frame.Inset
