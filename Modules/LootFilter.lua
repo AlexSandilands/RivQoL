@@ -167,8 +167,11 @@ local function Announce(link, quantity)
     ns.Print("left on corpse:", (link or "?") .. ((quantity and quantity > 1) and ("x" .. quantity) or ""))
 end
 
-local function OnLootReady()
+local function OnLootReady(clientAutoLoot)
     if session then return end   -- LOOT_READY can fire more than once per window
+    -- The client is looting everything itself (the key binding couldn't be
+    -- taken over, e.g. in combat): don't pretend to filter.
+    if clientAutoLoot then return end
     if not AutoLootApplies() then return end
     session = { skipped = {} }
     local skippedAny = false
@@ -192,9 +195,9 @@ local function OnLootReady()
     end
 end
 
-frame:SetScript("OnEvent", function(_, event)
+frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "LOOT_READY" then
-        OnLootReady()
+        OnLootReady(arg1 == true or arg1 == 1)
     elseif event == "LOOT_SLOT_CLEARED" then
         CloseIfOnlySkipped()
     elseif event == "LOOT_CLOSED" then
