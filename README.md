@@ -44,6 +44,9 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   from the game's setting. It hands the CVar back (as the toggle has it) when turned off and at every
   logout, so disabling or removing the addon never leaves auto-loot off. Ticking the game's own
   Auto Loot box while the module is on just turns its toggle on.
+- **Looks like the game's auto-loot**: it waits for the loot window to open, then takes one slot at a
+  time at the game's auto-loot pace (`autoLootRate`, 150 ms if that is 0 or missing), so the window and
+  its animations play as usual.
 - **The auto-loot key** (Interface > Controls) still inverts auto-loot. With the CVar at 0 the game
   would loot everything itself while that key is held, so the module also sets the key's binding to
   NONE for the session and checks the key itself. That change is never saved: if the key bindings are
@@ -70,8 +73,8 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   would leave behind glow like a proc'd action button, so you can check your lists and rules.
   It's a Baganator icon-corner widget ("RivQoL: Loot Filter match", top left by default) that you can
   move or remove in Baganator's icon settings. The default and other bag UIs aren't supported.
-- When only skipped items are left, the loot window closes and they stay on the corpse. "Announce"
-  prints each one in chat.
+- When only skipped items are left, the loot window closes after a short pause and they stay on the
+  corpse. "Announce" prints each one in chat.
 
 ## Adding a module
 

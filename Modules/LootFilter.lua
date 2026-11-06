@@ -5,8 +5,11 @@
 -- While enabled the module does the auto-looting itself: it turns the game's
 -- autoLootDefault CVar off (its value seeds the module's own auto-loot
 -- toggle, and that toggle is written back to the CVar when the module is
--- disabled), and on LOOT_READY loots every slot except the
--- filtered ones, then closes the window once only skipped items are left.
+-- disabled), and once the loot window is open (LOOT_OPENED) loots every
+-- slot except the filtered ones at the game's auto-loot pace, so the window
+-- and its animations look as they do with the game's own auto-loot. When
+-- only skipped items are left it closes the window (after a short pause, so
+-- the last slot's animation can finish).
 -- The auto-loot key (Interface > Controls) still inverts auto-loot: the
 -- client would otherwise loot everything itself while the key is held, so
 -- the module also sets the key binding to NONE while it is on (for this
@@ -241,13 +244,36 @@ local function SlotFilled(slot)
     return kind ~= nil and kind ~= SLOT_NONE
 end
 
--- Close the window once every item left is one we skip.
-local function CloseIfOnlySkipped()
-    if not session then return end
+-- Seconds between looted slots, like the game's own auto-loot (CVar
+-- autoLootRate, in ms, where the client has it). Never instant: at 0 the
+-- window would flash open and shut.
+local DEFAULT_RATE = 150
+local function LootDelay()
+    local ms = tonumber(GetCVar("autoLootRate") or "")
+    if not ms or ms <= 0 then ms = DEFAULT_RATE end
+    return ms / 1000
+end
+
+-- Is every item left in the window one we skip (or nothing left at all)?
+local function OnlySkippedLeft(current)
+    if #current.queue > 0 then return false end
     for slot = 1, GetNumLootItems() do
-        if SlotFilled(slot) and not session.skipped[slot] then return end
+        if SlotFilled(slot) and not current.skipped[slot] then return false end
     end
-    CloseLoot()
+    return true
+end
+
+-- Close the window once every item left is one we skip. Waits a moment
+-- first, so the last looted slot's animation plays like the game's own
+-- auto-loot; the client closes an emptied window itself, so that is only a
+-- fallback.
+local function CloseIfOnlySkipped()
+    local current = session
+    if not current or current.closing or not OnlySkippedLeft(current) then return end
+    current.closing = true
+    C_Timer.After(math.max(LootDelay(), 0.3), function()
+        if session == current and OnlySkippedLeft(current) then CloseLoot() end
+    end)
 end
 
 -- Skipped items stay on the corpse, so it can be opened again: report and
@@ -271,14 +297,6 @@ local function Announce(link, quantity, reason, ruleIndex)
         .. " |cff999999(" .. why .. ")|r")
 end
 
--- Seconds between looted slots, like the game's own auto-loot (CVar
--- autoLootRate, in ms, where the client has it).
-local function LootDelay()
-    local ms = tonumber(GetCVar("autoLootRate") or "")
-    if not ms or ms < 0 then ms = 150 end
-    return ms / 1000
-end
-
 -- Loot the queued slots one at a time, stopping if the window closes.
 local function LootNext(current)
     if session ~= current then return end
@@ -286,17 +304,12 @@ local function LootNext(current)
     if not slot then return end
     if SlotFilled(slot) then LootSlot(slot) end
     if #current.queue > 0 then
-        local delay = LootDelay()
-        if delay > 0 then
-            C_Timer.After(delay, function() LootNext(current) end)
-        else
-            LootNext(current)
-        end
+        C_Timer.After(LootDelay(), function() LootNext(current) end)
     end
 end
 
-local function OnLootReady(clientAutoLoot)
-    if session then return end   -- LOOT_READY can fire more than once per window
+local function OnLootOpened(clientAutoLoot)
+    if session then return end
     -- The client is looting everything itself (the key binding couldn't be
     -- taken over, e.g. in combat): don't pretend to filter.
     if clientAutoLoot then return end
@@ -322,15 +335,17 @@ local function OnLootReady(clientAutoLoot)
     end
     if skippedAny then ns.FireChanged(M.name, "skippedCount") end
     if #session.queue > 0 then
-        LootNext(session)
+        -- Let the window show its items first, then take them one by one.
+        local current = session
+        C_Timer.After(LootDelay(), function() LootNext(current) end)
     else
         CloseIfOnlySkipped()   -- only skipped items were there
     end
 end
 
 frame:SetScript("OnEvent", function(_, event, arg1)
-    if event == "LOOT_READY" then
-        OnLootReady(arg1 == true or arg1 == 1)
+    if event == "LOOT_OPENED" then
+        OnLootOpened(arg1 == true or arg1 == 1)
     elseif event == "LOOT_SLOT_CLEARED" then
         CloseIfOnlySkipped()
     elseif event == "LOOT_CLOSED" then
@@ -451,7 +466,7 @@ function M:OnEnable(db)
     if GetCVar(CVAR) ~= "0" then SetCVar(CVAR, "0") end
     TakeKey(db)
     keyFrame:RegisterEvent("UPDATE_BINDINGS")
-    frame:RegisterEvent("LOOT_READY")
+    frame:RegisterEvent("LOOT_OPENED")
     frame:RegisterEvent("LOOT_SLOT_CLEARED")
     frame:RegisterEvent("LOOT_CLOSED")
     frame:RegisterEvent("CVAR_UPDATE")
