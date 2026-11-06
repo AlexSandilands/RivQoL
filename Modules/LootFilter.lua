@@ -270,15 +270,39 @@ local function Announce(link, quantity, reason, ruleIndex)
         .. " |cff999999(" .. why .. ")|r")
 end
 
+-- Seconds between looted slots, like the game's own auto-loot (CVar
+-- autoLootRate, in ms, where the client has it).
+local function LootDelay()
+    local ms = tonumber(GetCVar("autoLootRate") or "")
+    if not ms or ms < 0 then ms = 150 end
+    return ms / 1000
+end
+
+-- Loot the queued slots one at a time, stopping if the window closes.
+local function LootNext(current)
+    if session ~= current then return end
+    local slot = table.remove(current.queue, 1)
+    if not slot then return end
+    if SlotFilled(slot) then LootSlot(slot) end
+    if #current.queue > 0 then
+        local delay = LootDelay()
+        if delay > 0 then
+            C_Timer.After(delay, function() LootNext(current) end)
+        else
+            LootNext(current)
+        end
+    end
+end
+
 local function OnLootReady(clientAutoLoot)
     if session then return end   -- LOOT_READY can fire more than once per window
     -- The client is looting everything itself (the key binding couldn't be
     -- taken over, e.g. in combat): don't pretend to filter.
     if clientAutoLoot then return end
     if not AutoLootApplies() then return end
-    session = { skipped = {} }
+    session = { skipped = {}, queue = {} }
     local skippedAny = false
-    for slot = GetNumLootItems(), 1, -1 do
+    for slot = 1, GetNumLootItems() do
         if SlotFilled(slot) then
             local skip, reason, ruleIndex = M:ShouldSkipSlot(slot)
             if skip then
@@ -291,13 +315,15 @@ local function OnLootReady(clientAutoLoot)
                     Announce(link, quantity, reason, ruleIndex)
                 end
             else
-                LootSlot(slot)
+                table.insert(session.queue, slot)
             end
         end
     end
-    if skippedAny then
-        ns.FireChanged(M.name, "skippedCount")
-        CloseIfOnlySkipped()   -- nothing else was there
+    if skippedAny then ns.FireChanged(M.name, "skippedCount") end
+    if #session.queue > 0 then
+        LootNext(session)
+    else
+        CloseIfOnlySkipped()   -- only skipped items were there
     end
 end
 
