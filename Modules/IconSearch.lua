@@ -167,11 +167,23 @@ end
 -- popup -> its filter state
 local states = {}
 
+-- Do two icons name the same file? A provider lists a few "loose" icons by
+-- path, while a texture reports its file ID.
+local function SameIcon(a, b)
+    if a == b then return true end
+    local _, idA = Lookup(a)
+    local _, idB = Lookup(b)
+    return idA ~= nil and idA == idB
+end
+
 -- Index of an icon in the filtered list (the "?" is always 1).
 local function IndexIn(list, icon)
     if icon == QUESTION_MARK then return 1 end
     for i = 1, #list do
         if list[i] == icon then return i end
+    end
+    for i = 1, #list do
+        if type(list[i]) == "string" and SameIcon(list[i], icon) then return i end
     end
 end
 
@@ -393,10 +405,22 @@ local function Attach(popup)
         end)
     end
     -- Blizzard re-picks the highlighted cell from its own list here.
-    for _, method in ipairs({ "ReevaluateSelectedIcon", "SetIconFromMouse" }) do
-        if popup[method] then
-            hooksecurefunc(popup, method, function() Reselect(state) end)
-        end
+    if popup.ReevaluateSelectedIcon then
+        hooksecurefunc(popup, "ReevaluateSelectedIcon", function() Reselect(state) end)
+    end
+    -- Runs on every mouse-up over the picker, but only changes the selection
+    -- when an icon was dropped on it: then fix the highlight and scroll to it.
+    if popup.SetIconFromMouse then
+        hooksecurefunc(popup, "SetIconFromMouse", function()
+            local list = state.list
+            if not list then return end
+            local selector = popup.IconSelector
+            local selected = selector:GetSelectedIndex()
+            local texture = popup.BorderBox.SelectedIconArea.SelectedIconButton:GetIconTexture()
+            if selected and list[selected] and SameIcon(list[selected], texture) then return end
+            Reselect(state)
+            if selector:GetSelectedIndex() then selector:ScrollToSelectedIndex() end
+        end)
     end
     -- Blizzard hides the grid while an icon is dragged onto the picker.
     if popup.UpdateStateFromCursorType then
