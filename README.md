@@ -15,6 +15,25 @@ ln -s ~/Projects/RivQoL "/mnt/linux-games/Blizzard/World of Warcraft/_forever_/I
 A brand-new addon folder is only picked up after a full game restart; after that, `/reload` is enough.
 Changes to the `.toc` (new files) also need a restart.
 
+## Releasing
+
+Releases go to [CurseForge](https://www.curseforge.com/wow/addons/rivqol) (project 1787745) and
+GitHub Releases. Pushing a `v*` tag runs `.github/workflows/release.yml`, which uses the
+[BigWigs packager](https://github.com/BigWigsMods/packager) to build the `RivQoL-<tag>` zip and upload it:
+
+```
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+- The tag becomes the version: the packager replaces `@project-version@` in `RivQoL.toc`. In a dev
+  checkout the toc shows the raw `@project-version@`, which is expected.
+- A tag with `alpha` or `beta` in it (`v0.2.0-beta1`) uploads as an Alpha/Beta file instead of a Release.
+- The changelog is built from the commit messages since the previous tag.
+- What goes in the zip is set by `.pkgmeta` (dotfiles and `scripts/` are left out).
+- It needs a `CF_API_KEY` repository secret (passed to the packager as `CF_API_TOKEN`): a CurseForge API token from
+  <https://authors.curseforge.com/account/api-tokens>.
+
 ## Commands
 
 - `/rivqol` or `/rq`: open the options window (also under Esc > Options > AddOns > RivQoL)
@@ -130,9 +149,9 @@ The icon is an "RQ" monogram in the options window's colours. `Media/Logo.svg` i
 
 In the game it is set as `## IconTexture` in the `.toc` (AddOns list), as the `## AddonCompartmentFunc` entry
 in the minimap addon menu (click opens the options window) and next to the title of the options window.
-A new media file or `.toc` change needs a full game restart, not `/reload`. Whether WoW Forever (interface 16001)
-reads `IconTexture` and the addon compartment fields has not been checked in the client yet; unsupported `.toc`
-fields are ignored by the game, so they do no harm.
+A new media file or `.toc` change needs a full game restart, not `/reload`. The branch was tried in WoW Forever
+(interface 16001) and approved, but which of the three places show the icon was not recorded separately.
+Unsupported `.toc` fields are ignored by the game, so they do no harm.
 
 ## Adding a module
 

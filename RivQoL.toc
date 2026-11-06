@@ -2,7 +2,8 @@
 ## Title: RivQoL
 ## Notes: Riv's personal quality-of-life tweaks for WoW Forever.
 ## Author: Riv
-## Version: 0.1.0
+## Version: @project-version@
+## X-Curse-Project-ID: 1787745
 ## IconTexture: Interface\AddOns\RivQoL\Media\Icon
 ## AddonCompartmentFunc: RivQoL_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: RivQoL_OnAddonCompartmentEnter
