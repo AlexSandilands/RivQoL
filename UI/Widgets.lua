@@ -1,5 +1,5 @@
--- Shared option widgets for module pages, built from stock Blizzard
--- templates and themed through ns.Skin when EllesmereUI skinning is on.
+-- Shared option widgets for module pages, drawn in RivQoL's own style
+-- (UI/Theme.lua).
 --
 -- Every builder lays out top-down:   widget, y = W.Checkbox(page, y, opts)
 -- `y` is the (negative) offset from the parent's top; the returned `y` is
@@ -13,6 +13,7 @@ local _, ns = ...
 
 local W = {}
 ns.Widgets = W
+local T = ns.Theme
 
 local GAP = 8          -- vertical space between widgets
 W.GAP = GAP
@@ -63,74 +64,57 @@ local function Width(parent, x)
     return w - (x or 0) - 16
 end
 
--- Section header: large gold text with a thin divider under it.
+-- Section header: gold Morpheus text over a gold rule that fades out.
 function W.SectionHeader(parent, y, text, opts)
     opts = opts or {}
     local x = opts.x or 0
-    local fs = parent:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+    y = y - 4   -- a little air above each section
+    local fs = T.FontString(parent, "header")
     fs:SetPoint("TOPLEFT", x, y)
     fs:SetText(text)
-    ns.Skin("Font", fs)   -- before measuring: the EUI font can change the height
-    local line = parent:CreateTexture(nil, "ARTWORK")
-    line:SetColorTexture(1, 1, 1, 0.15)
-    line:SetHeight(1)
-    line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -4)
-    line:SetWidth(Width(parent, x))
+    local line = T.Rule(parent, Width(parent, x))
+    line:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -5)
     fs.Line = line
-    return fs, y - fs:GetStringHeight() - 4 - 1 - GAP
+    return fs, y - fs:GetStringHeight() - 5 - 1 - GAP - 2
 end
 
 -- Wrapped body text.
 function W.Text(parent, y, text, opts)
     opts = opts or {}
     local x = opts.x or 0
-    local fs = parent:CreateFontString(nil, "ARTWORK", opts.font or "GameFontHighlight")
+    local fs = T.FontString(parent, opts.font)
     fs:SetPoint("TOPLEFT", x, y)
     fs:SetWidth(opts.width or Width(parent, x))
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(true)
+    fs:SetSpacing(2)
     fs:SetText(text)
-    ns.Skin("Font", fs)   -- before measuring: the EUI font can change line wrapping
     return fs, y - fs:GetStringHeight() - GAP
 end
 
 -- Checkbox with a label. opts: label, tooltip, get/set or db/key, onChange(v)
 function W.Checkbox(parent, y, opts)
     local get, set = Bind(parent, opts)
-    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
-    cb:SetSize(26, 26)
+    local cb = T.Checkbox(parent, opts.label)
     cb:SetPoint("TOPLEFT", opts.x or 0, y)
-    local label = cb.Text or cb.text
-    if not label then
-        label = cb:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        label:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-    end
-    label:SetFontObject("GameFontHighlight")
-    label:SetText(opts.label or "")
-    cb.Label = label
-    cb:SetScript("OnClick", function(self)
+    function cb:onClick()
         local v = self:GetChecked() and true or false
         set(v)
         if opts.onChange then opts.onChange(v) end
-    end)
+    end
     function cb:Refresh() self:SetChecked(get() and true or false) end
     Tooltip(cb, opts.label, opts.tooltip)
     cb:Refresh()
-    ns.Skin("Checkbox", cb)
-    ns.Skin("Font", label)
     Track(parent, cb)
-    return cb, y - 26 - GAP
+    return cb, y - 20 - GAP
 end
 
 -- Push button. opts: text, width, onClick, tooltip
 function W.Button(parent, y, opts)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(opts.width or 140, opts.height or 22)
+    local b = T.Button(parent, opts.text, opts.width or 140, opts.height or 24, opts.variant)
     b:SetPoint("TOPLEFT", opts.x or 0, y)
-    b:SetText(opts.text or "")
     if opts.onClick then b:SetScript("OnClick", opts.onClick) end
     Tooltip(b, opts.text, opts.tooltip)
-    ns.Skin("Button", b)
     return b, y - b:GetHeight() - GAP
 end
 
@@ -145,12 +129,11 @@ function W.Slider(parent, y, opts)
     holder:SetPoint("TOPLEFT", x, y)
     holder:SetSize(opts.width or math.min(Width(parent, x), 420), 26)
 
-    local label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local label = T.FontString(holder, "body")
     label:SetPoint("LEFT")
     label:SetWidth(140)
     label:SetJustifyH("LEFT")
     label:SetText(opts.label or "")
-    ns.Skin("Font", label)
 
     local slider = CreateFrame("Slider", nil, holder, "MinimalSliderWithSteppersTemplate")
     slider:SetPoint("LEFT", label, "RIGHT", 8, 0)
@@ -186,14 +169,13 @@ function W.MoneyInput(parent, y, opts)
     local x = opts.x or 0
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetPoint("TOPLEFT", x, y)
-    holder:SetSize(360, 24)
+    holder:SetSize(370, 24)
 
-    local label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local label = T.FontString(holder, "body")
     label:SetPoint("LEFT")
     label:SetWidth(140)
     label:SetJustifyH("LEFT")
     label:SetText(opts.label or "")
-    ns.Skin("Font", label)
 
     local parts = {
         { key = "gold",   width = 56, icon = "Interface\\MoneyFrame\\UI-GoldIcon",   mult = 10000 },
@@ -213,10 +195,8 @@ function W.MoneyInput(parent, y, opts)
     end
 
     for i, p in ipairs(parts) do
-        local box = CreateFrame("EditBox", nil, holder, "InputBoxTemplate")
-        box:SetSize(p.width, 20)
-        box:SetPoint("LEFT", anchor, "RIGHT", i == 1 and 12 or 6, 0)
-        box:SetAutoFocus(false)
+        local box = T.EditBox(holder, p.width, 22)
+        box:SetPoint("LEFT", anchor, "RIGHT", i == 1 and 8 or 6, 0)
         box:SetNumeric(true)
         box:SetMaxLetters(p.max and 2 or 7)
         box:SetJustifyH("RIGHT")
@@ -226,7 +206,7 @@ function W.MoneyInput(parent, y, opts)
             self.cancel = true
             self:ClearFocus()
         end)
-        box:SetScript("OnEditFocusLost", function(self)
+        box:HookScript("OnEditFocusLost", function(self)
             if self.cancel then
                 self.cancel = nil
             else
@@ -237,8 +217,7 @@ function W.MoneyInput(parent, y, opts)
         local icon = holder:CreateTexture(nil, "ARTWORK")
         icon:SetSize(13, 13)
         icon:SetTexture(p.icon)
-        icon:SetPoint("LEFT", box, "RIGHT", 2, 0)
-        ns.Skin("EditBox", box)
+        icon:SetPoint("LEFT", box, "RIGHT", 3, 0)
         p.box, anchor = box, icon
         boxes[p.key] = box
     end
@@ -257,6 +236,52 @@ function W.MoneyInput(parent, y, opts)
     return holder, y - 24 - GAP
 end
 
+-- One-line text input with a label on the left.
+-- opts: label, width, maxLetters, get/set or db/key, tooltip.
+-- Saved on Enter / focus loss; Escape restores the saved value.
+function W.TextInput(parent, y, opts)
+    local get, set = Bind(parent, opts)
+    local x = opts.x or 0
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetPoint("TOPLEFT", x, y)
+    holder:SetSize(160 + (opts.width or 200), 24)
+
+    local label = T.FontString(holder, "body")
+    label:SetPoint("LEFT")
+    label:SetWidth(140)
+    label:SetJustifyH("LEFT")
+    label:SetText(opts.label or "")
+
+    local box = T.EditBox(holder, opts.width or 200, 22)
+    box:SetPoint("LEFT", label, "RIGHT", 8, 0)
+    box:SetMaxLetters(opts.maxLetters or 100)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEscapePressed", function(self)
+        self.cancel = true
+        self:ClearFocus()
+    end)
+    box:HookScript("OnEditFocusLost", function(self)
+        if self.cancel then
+            self.cancel = nil
+        else
+            set(strtrim(self:GetText() or ""))
+        end
+        holder:Refresh()
+    end)
+    holder.EditBox, holder.Label = box, label
+
+    function holder:Refresh()
+        if not box:HasFocus() then
+            box:SetText(get() or "")
+            box:SetCursorPosition(0)
+        end
+    end
+    Tooltip(holder, opts.label, opts.tooltip)
+    holder:Refresh()
+    Track(parent, holder)
+    return holder, y - 24 - GAP
+end
+
 -- Single-choice dropdown.
 -- opts: label, choices = { {value=, text=}, ... } or function() -> choices,
 --       width, get/set or db/key, tooltip
@@ -267,16 +292,16 @@ function W.Dropdown(parent, y, opts)
     holder:SetPoint("TOPLEFT", x, y)
     holder:SetSize(360, 26)
 
-    local label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local label = T.FontString(holder, "body")
     label:SetPoint("LEFT")
     label:SetWidth(140)
     label:SetJustifyH("LEFT")
     label:SetText(opts.label or "")
-    ns.Skin("Font", label)
 
     local dd = CreateFrame("DropdownButton", nil, holder, "WowStyle1DropdownTemplate")
-    dd:SetWidth(opts.width or 180)
+    dd:SetSize(opts.width or 200, 22)
     dd:SetPoint("LEFT", label, "RIGHT", 8, 0)
+    T.SkinDropdown(dd)
     dd:SetupMenu(function(_, root)
         local choices = type(opts.choices) == "function" and opts.choices() or opts.choices or {}
         for _, c in ipairs(choices) do
@@ -288,7 +313,6 @@ function W.Dropdown(parent, y, opts)
 
     function holder:Refresh() dd:GenerateMenu() end
     Tooltip(holder, opts.label, opts.tooltip)
-    ns.Skin("Dropdown", dd)
     Track(parent, holder)
     return holder, y - 26 - GAP
 end
@@ -298,23 +322,14 @@ end
 -- slot:SetItem(itemID or nil) shows an item's icon.
 function W.ItemDropSlot(parent, y, opts)
     local size = opts.size or 36
-    local slot = CreateFrame("Button", nil, parent)
-    slot:SetSize(size, size)
+    local slot = T.Slot(parent, size)
     slot:SetPoint("TOPLEFT", opts.x or 0, y)
     slot:RegisterForClicks("LeftButtonUp")
+    local icon = slot.Icon
 
-    local bg = slot:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetTexture("Interface\\PaperDoll\\UI-Backpack-EmptySlot")
-    local icon = slot:CreateTexture(nil, "ARTWORK")
-    icon:SetAllPoints()
-    slot:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    slot.Icon, slot.Background = icon, bg
-
-    local label = slot:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    label:SetPoint("LEFT", slot, "RIGHT", 8, 0)
+    local label = T.FontString(slot, "body")
+    label:SetPoint("LEFT", slot, "RIGHT", 10, 0)
     label:SetText(opts.label or "Drop an item here")
-    ns.Skin("Font", label)
     slot.Label = label
 
     function slot:SetItem(itemID)
@@ -330,7 +345,7 @@ function W.ItemDropSlot(parent, y, opts)
     end
     slot:SetScript("OnReceiveDrag", Accept)
     slot:SetScript("OnClick", Accept)
-    slot:SetScript("OnEnter", function(self)
+    slot:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if self.itemID then
             GameTooltip:SetItemByID(self.itemID)
@@ -340,7 +355,6 @@ function W.ItemDropSlot(parent, y, opts)
         end
         GameTooltip:Show()
     end)
-    slot:SetScript("OnLeave", GameTooltip_Hide)
-    ns.Skin("SquareIcon", icon, slot)
+    slot:HookScript("OnLeave", GameTooltip_Hide)
     return slot, y - size - GAP
 end

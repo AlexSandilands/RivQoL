@@ -12,6 +12,8 @@ end
 -- A module is a table with:
 --   name         short key, used in slash commands and the saved settings
 --   title        optional display name for the options window (defaults to name)
+--   group        optional; "general" puts a small module on the shared General
+--                page of the options window instead of a sidebar entry of its own
 --   description  one line shown by /rivqol list and on the module's options page
 --   defaults     table of default settings (must include `enabled`)
 --   OnEnable(db)  called at PLAYER_LOGIN when the module is enabled, and again
@@ -22,6 +24,7 @@ end
 --                 options window below the title, description and Enabled
 --                 toggle: lay widgets out from `y` (see UI/Widgets.lua) and
 --                 return the final y so the page scrolls to fit
+--                 (page:SetPageHeight(h) resizes it later if content grows)
 function ns.RegisterModule(mod)
     assert(mod.name and not ns.modules[mod.name], "RivQoL: bad or duplicate module name")
     ns.modules[mod.name] = mod

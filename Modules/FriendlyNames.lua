@@ -14,6 +14,7 @@ local CVAR = "UnitNameFriendlyPlayerName"
 local M = {
     name = "friendlynames",
     title = "Friendly Names",
+    group = "general",
     description = "Hide floating friendly player names (EllesmereUI turns them back on at load)",
     defaults = { enabled = true },
 }
