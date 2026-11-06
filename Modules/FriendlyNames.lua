@@ -13,6 +13,7 @@ local CVAR = "UnitNameFriendlyPlayerName"
 
 local M = {
     name = "friendlynames",
+    title = "Friendly Names",
     description = "Hide floating friendly player names (EllesmereUI turns them back on at load)",
     defaults = { enabled = true },
 }
@@ -42,12 +43,9 @@ function M:OnEnable()
     Enforce()
 end
 
-function M:OnToggle(db)
-    if db.enabled then
-        self:OnEnable()
-    else
-        ns.Print("friendly names will follow your game/EllesmereUI setting again after /reload")
-    end
+function M:OnDisable()
+    -- The hook and event frame stay installed but do nothing while disabled.
+    ns.Print("friendly names will follow your game/EllesmereUI setting again after /reload")
 end
 
 ns.RegisterModule(M)
