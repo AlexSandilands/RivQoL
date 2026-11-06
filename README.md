@@ -55,6 +55,12 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 - **Rules**: an item is skipped when all set conditions of any rule match. A max sell price of 0
   means any price, and a rule with no conditions does nothing. Click a rule's name to rename it
   (clear it to go back to "Rule N"); the chat line says which rule, or the skip list, left an item.
+- **Tooltip text** in a rule: "Tooltip contains" matches items whose tooltip has that text, and
+  "...but doesn't contain" leaves out items that have it. Both are case-insensitive, ignore numbers
+  ("restores health" matches "Restores 61 Health over 18 sec.") and take comma-separated alternatives.
+  Food but not water: type Consumable, contains `restores health`, doesn't contain `mana` (the last
+  part also keeps mixed food-and-drink items). "Doesn't contain" alone doesn't make a rule active, and
+  an item whose tooltip hasn't loaded yet is looted.
 - **Always looted**: coins and currencies; anything on the never-skip list; and, unless it is on the
   skip list, quest items, Rare or better items, items whose info isn't cached yet, and (for rules
   with a price limit) items with no vendor price.
@@ -107,6 +113,7 @@ Each is `widget, nextY = W.X(parent, y, opts)` and lays out top-down. Value widg
 | `Button` | `text`, `width`, `onClick` |
 | `Slider` | `min`, `max`, `step`, `format(v)`, `width` |
 | `MoneyInput` | value is copper |
+| `TextInput` | `width`, `maxLetters`; saved on Enter / focus loss |
 | `Dropdown` | `choices = {{value=, text=}, ...}` or a function returning them, `width` |
 | `ItemDropSlot` | `onItem(itemID, link)`, `size`; `slot:SetItem(itemID)` |
 

@@ -257,6 +257,56 @@ function W.MoneyInput(parent, y, opts)
     return holder, y - 24 - GAP
 end
 
+-- One-line text input with a label on the left.
+-- opts: label, width, maxLetters, get/set or db/key, tooltip.
+-- Saved on Enter / focus loss; Escape restores the saved value.
+function W.TextInput(parent, y, opts)
+    local get, set = Bind(parent, opts)
+    local x = opts.x or 0
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetPoint("TOPLEFT", x, y)
+    holder:SetSize(160 + (opts.width or 200), 24)
+
+    local label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("LEFT")
+    label:SetWidth(140)
+    label:SetJustifyH("LEFT")
+    label:SetText(opts.label or "")
+    ns.Skin("Font", label)
+
+    local box = CreateFrame("EditBox", nil, holder, "InputBoxTemplate")
+    box:SetSize(opts.width or 200, 20)
+    box:SetPoint("LEFT", label, "RIGHT", 12, 0)
+    box:SetAutoFocus(false)
+    box:SetMaxLetters(opts.maxLetters or 100)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEscapePressed", function(self)
+        self.cancel = true
+        self:ClearFocus()
+    end)
+    box:SetScript("OnEditFocusLost", function(self)
+        if self.cancel then
+            self.cancel = nil
+        else
+            set(strtrim(self:GetText() or ""))
+        end
+        holder:Refresh()
+    end)
+    ns.Skin("EditBox", box)
+    holder.EditBox, holder.Label = box, label
+
+    function holder:Refresh()
+        if not box:HasFocus() then
+            box:SetText(get() or "")
+            box:SetCursorPosition(0)
+        end
+    end
+    Tooltip(holder, opts.label, opts.tooltip)
+    holder:Refresh()
+    Track(parent, holder)
+    return holder, y - 24 - GAP
+end
+
 -- Single-choice dropdown.
 -- opts: label, choices = { {value=, text=}, ... } or function() -> choices,
 --       width, get/set or db/key, tooltip

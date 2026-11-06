@@ -43,7 +43,8 @@ local M = {
         enabled = false,    -- it takes over auto-loot, so opt in
         items = {},         -- [itemID] = true: always skip
         never = {},         -- [itemID] = true: always loot
-        rules = {},         -- { name = string|nil, class = id|nil, subclass = id|nil, maxQuality = n|nil, maxPrice = copper (0 = any) }
+        rules = {},         -- { name, class, subclass, maxQuality, maxPrice (copper, 0 = any),
+                            --   text, notText (tooltip phrases, comma-separated) }, all optional
         announce = true,    -- chat line per skipped item
         -- autoLoot: our auto-loot on/off, seeded from the game's setting
         -- tookOver: true while we hold autoLootDefault at 0
@@ -60,9 +61,79 @@ local frame = CreateFrame("Frame")
 -- Matching
 ---------------------------------------------------------------------------
 
+-- Text is compared lower-case with numbers removed and spaces collapsed, so
+-- "restores health" matches "Restores 61 Health over 18 sec."
+local function Normalize(text)
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):lower()
+    text = text:gsub("[%d%.,]*%d[%d%.,]*", " "):gsub("%s+", " ")
+    return strtrim(text)
+end
+
+-- The item's tooltip as one normalized string (see Normalize), or nil while
+-- the client is still fetching it. Cached per item for the session.
+local textCache = {}
+local scanTip
+local function TooltipText(itemID)
+    local cached = textCache[itemID]
+    if cached then return cached end
+    local lines = {}
+    local function Add(text)
+        if text and text ~= "" then lines[#lines + 1] = text end
+    end
+    if C_TooltipInfo and C_TooltipInfo.GetItemByID then
+        local data = C_TooltipInfo.GetItemByID(itemID)
+        for _, line in ipairs(data and data.lines or {}) do
+            if line.leftText == nil and line.args and TooltipUtil and TooltipUtil.SurfaceArgs then
+                TooltipUtil.SurfaceArgs(line)
+            end
+            Add(line.leftText)
+            Add(line.rightText)
+        end
+    else
+        if not scanTip then
+            scanTip = CreateFrame("GameTooltip", "RivQoLLootFilterScanTip", nil, "GameTooltipTemplate")
+        end
+        scanTip:SetOwner(WorldFrame, "ANCHOR_NONE")
+        scanTip:ClearLines()
+        scanTip:SetItemByID(itemID)
+        for i = 1, scanTip:NumLines() do
+            local left = _G["RivQoLLootFilterScanTipTextLeft" .. i]
+            local right = _G["RivQoLLootFilterScanTipTextRight" .. i]
+            Add(left and left:GetText())
+            Add(right and right:GetText())
+        end
+        scanTip:Hide()
+    end
+    local text = Normalize(table.concat(lines, " | "))
+    local retrieving = RETRIEVING_ITEM_INFO and Normalize(RETRIEVING_ITEM_INFO)
+    if text == "" or (retrieving and text:find(retrieving, 1, true)) then return nil end
+    textCache[itemID] = text
+    return text
+end
+
+-- Comma-separated phrases, trimmed and lower-cased; nil when there are none.
+local function Phrases(value)
+    if type(value) ~= "string" then return nil end
+    local list = {}
+    for phrase in value:gmatch("[^,]+") do
+        phrase = Normalize(phrase)
+        if phrase ~= "" then list[#list + 1] = phrase end
+    end
+    return #list > 0 and list or nil
+end
+
+local function FindAny(text, phrases)
+    for _, phrase in ipairs(phrases) do
+        if text:find(phrase, 1, true) then return true end
+    end
+    return false
+end
+
 -- Does `rule` match an item with this info? A rule with no conditions at all
--- never matches, so a blank new rule can't skip everything.
-local function RuleMatches(rule, classID, subclassID, quality, sellPrice)
+-- never matches, so a blank new rule can't skip everything. "Doesn't contain"
+-- only narrows a rule; on its own it isn't a condition. Tooltip checks run
+-- last, and an unknown tooltip means no match (the item is looted).
+local function RuleMatches(rule, classID, subclassID, quality, sellPrice, itemID)
     local any = false
     if rule.class ~= nil then
         if classID ~= rule.class then return false end
@@ -77,7 +148,16 @@ local function RuleMatches(rule, classID, subclassID, quality, sellPrice)
         if sellPrice <= 0 or sellPrice > rule.maxPrice then return false end
         any = true
     end
-    return any
+    local want, avoid = Phrases(rule.text), Phrases(rule.notText)
+    if want then any = true end
+    if not any then return false end
+    if want or avoid then
+        local text = TooltipText(itemID)
+        if not text then return false end
+        if want and not FindAny(text, want) then return false end
+        if avoid and FindAny(text, avoid) then return false end
+    end
+    return true
 end
 
 -- A rule's display name: its own, or "Rule N".
@@ -108,7 +188,7 @@ function M:ShouldSkipItem(itemID)
     if quality >= RARE or classID == QUEST_CLASS or bindType == BIND_QUEST then return false end
     sellPrice = sellPrice or 0
     for i, rule in ipairs(db.rules) do
-        if RuleMatches(rule, classID, subclassID, quality, sellPrice) then return true, "rule", i end
+        if RuleMatches(rule, classID, subclassID, quality, sellPrice, itemID) then return true, "rule", i end
     end
     return false
 end
@@ -535,6 +615,7 @@ end
 
 local function HasCondition(rule)
     return rule.class ~= nil or rule.maxQuality ~= nil or (rule.maxPrice or 0) > 0
+        or Phrases(rule.text) ~= nil
 end
 
 local function RuleBlock(parent, y, index, rule)
@@ -624,6 +705,18 @@ local function RuleBlock(parent, y, index, rule)
         get = function() return rule.maxPrice or 0 end,
         set = function(v) rule.maxPrice = v; Changed() end,
         tooltip = "Vendor price per item, at most this much. 0 = any price. With a limit set, items that can't be sold to a vendor are never skipped.",
+    })
+    _, y = W.TextInput(parent, y, {
+        x = 12, label = "Tooltip contains",
+        get = function() return rule.text or "" end,
+        set = function(v) rule.text = v ~= "" and v or nil; Changed() end,
+        tooltip = "Text from the item's tooltip, e.g. \"restores health\". Not case-sensitive, and numbers are ignored (\"restores health\" matches \"Restores 61 health\"). Separate alternatives with commas: any of them matches.",
+    })
+    _, y = W.TextInput(parent, y, {
+        x = 12, label = "...but doesn't contain",
+        get = function() return rule.notText or "" end,
+        set = function(v) rule.notText = v ~= "" and v or nil; Changed() end,
+        tooltip = "Items whose tooltip has any of these (comma-separated) are not matched by this rule, e.g. \"mana\". This narrows the rule; on its own it isn't a condition.",
     })
     warning, y = W.Text(parent, y, "|cffff8800This rule has no conditions yet, so it skips nothing.|r",
         { x = 12, font = "GameFontHighlightSmall" })
