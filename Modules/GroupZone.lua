@@ -332,8 +332,16 @@ end
 -- Pixels the role/count display really takes from the row's right edge.
 local function DataReserve(row)
     local full = 2 + row.DataDisplay:GetWidth()
-    local left, right = ContentLeft(row.DataDisplay, nil, 0), row:GetRight()
-    if not (left and right) then return nil, full end
+    local right = row:GetRight()
+    if not right then return nil, full end   -- row not laid out yet
+    local left = ContentLeft(row.DataDisplay, nil, 0)
+    if not left then
+        -- Laid out, but the display shows nothing measurable (no roles picked,
+        -- a type that hides it). If even the display has no position, the
+        -- layout isn't ready after all.
+        if not row.DataDisplay:GetLeft() then return nil, full end
+        return 0, full
+    end
     return math.min(full, math.max(0, right - left)), full
 end
 
