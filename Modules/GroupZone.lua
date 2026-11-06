@@ -70,13 +70,23 @@ local silenceTotals = false               -- also drop "N players total" (off on
 
 local RefreshAll        -- defined below
 
--- text, state, checkedAt. state: "api", "cache", "pending", "notfound" or nil (unknown).
+local function IsPending(name)
+    return pending ~= nil and pending.key == Key(name)
+end
+
+-- text, state, checkedAt. state: "api" (zone sent with the listing), "cache"
+-- (a /who result), "notfound" or nil (unknown). When /who names a place other
+-- than the listing's zone (usually the subzone), both show: "Goldshire (Elwynn
+-- Forest)", with state "cache".
 local function ZoneFor(name, apiArea)
-    if apiArea then return apiArea, "api" end
     local key = Key(name)
-    if not key then return nil end
-    if pending and pending.key == key then return nil, "pending" end
-    local c = cache[key]
+    local c = key and cache[key]
+    if apiArea then
+        if c and c.zone and c.zone ~= apiArea then
+            return c.zone .. " (" .. apiArea .. ")", "cache", c.at
+        end
+        return apiArea, "api"
+    end
     if c then return c.zone, c.zone and "cache" or "notfound", c.at end
     return nil
 end
@@ -220,9 +230,10 @@ local function IsFresh(name)
     return c and GetTime() - c.at < FRESH
 end
 
--- Who the magnifier looks up next: the first player of the listing without a
--- current zone (leader first), else the leader again. One per click, since
--- each /who needs its own click.
+-- Who the magnifier looks up next: the first player of the listing not looked
+-- up in the last FRESH seconds (leader first), else the leader again. One per
+-- click, since each /who needs its own click. /who can name a more specific
+-- place than the zone sent with the listing, so everyone is a target.
 local function NextTarget(e)
     local targets = e.targets
     if not (targets and targets[1]) then return nil end
@@ -235,7 +246,7 @@ end
 local function ShowButtonTip(btn)
     local e = btn.extras
     GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Look up zone")
+    GameTooltip:SetText("Look up location")
     local target = e and NextTarget(e)
     if target then
         GameTooltip:AddLine("Sends /who for " .. target .. ".", 1, 1, 1, true)
@@ -263,14 +274,14 @@ end
 local function CreateExtras(row)
     local e = {}
     local fs = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmallLeft")
-    fs:SetJustifyH("RIGHT")
-    fs:SetWordWrap(false)
-    fs:SetHeight(15)   -- placed in Decorate, left of the button
-    e.zone = fs
+    fs:SetJustifyH("LEFT")
+    fs:SetWordWrap(true)
+    if fs.SetMaxLines then fs:SetMaxLines(2) end
+    e.zone = fs   -- placed in Decorate, right of the role/count display
 
     local btn = CreateFrame("Button", nil, row)
     btn:SetSize(14, 14)
-    -- Placed in Decorate, just left of the role/count display.
+    -- Placed in Decorate, at the row's right edge.
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints()
     tex:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
@@ -294,21 +305,22 @@ local function CreateExtras(row)
     row:HookScript("OnLeave", function(self)
         if not e.button:IsMouseOver() then e.button:Hide() end
     end)
-    -- Left-clicking a listing (a hardware event) looks up its leader when
-    -- needed. Not your own or a delisted one (Blizzard ignores those clicks).
+    -- Left-clicking a listing (a hardware event) looks up its leader unless
+    -- that was done in the last FRESH seconds. Not your own or a delisted one
+    -- (Blizzard ignores those clicks).
     row:HookScript("OnClick", function(self, button)
         if button ~= "LeftButton" or self.isDelisted or e.hasSelf then return end
-        if M.db.enabled and e.leader and not e.api then M.Lookup(e.leader, false) end
+        if M.db.enabled and e.leader then M.Lookup(e.leader, false) end
     end)
 
     rowExtras[row] = e
     return e
 end
 
--- Screen x of the left-most visible content in the role/count display, whose
--- frame is much wider than what it shows (its icons and counts sit at its
--- right). nil when the layout isn't resolved yet.
-local function ContentLeft(region, best, depth)
+-- Screen x of the right-most visible content in the role/count display
+-- ("Roles:" and its icons, or the role counts). Its frame is wider than what it
+-- shows, so the frame's own edges don't tell where the content ends.
+local function ContentRight(region, best, depth)
     local kind = region:GetObjectType()
     if kind == "FontString" then
         local text = region:GetText()
@@ -316,40 +328,39 @@ local function ContentLeft(region, best, depth)
             local l, r, w = region:GetLeft(), region:GetRight(), region:GetStringWidth()
             if l and r then
                 local j = region:GetJustifyH()
-                local x = j == "RIGHT" and r - w or j == "CENTER" and (l + r - w) / 2 or l
-                best = best and math.min(best, x) or x
+                local x = j == "RIGHT" and r or j == "CENTER" and (l + r + w) / 2 or l + w
+                best = best and math.max(best, x) or x
             end
         end
     elseif kind == "Texture" then
         if region:IsShown() and (region:GetAlpha() or 0) > 0 and region:GetDrawLayer() ~= "BACKGROUND"
             and (region:GetTexture() or region.GetAtlas and region:GetAtlas()) then
-            local l = region:GetLeft()
-            if l then best = best and math.min(best, l) or l end
+            local r = region:GetRight()
+            if r then best = best and math.max(best, r) or r end
         end
     elseif region:IsShown() and depth < 4 then
-        for _, r in ipairs({ region:GetRegions() }) do best = ContentLeft(r, best, depth + 1) end
-        for _, c in ipairs({ region:GetChildren() }) do best = ContentLeft(c, best, depth + 1) end
+        for _, r in ipairs({ region:GetRegions() }) do best = ContentRight(r, best, depth + 1) end
+        for _, c in ipairs({ region:GetChildren() }) do best = ContentRight(c, best, depth + 1) end
     end
     return best
 end
 
--- Pixels the role/count display really takes from the row's right edge.
-local function DataReserve(row)
-    local full = 2 + row.DataDisplay:GetWidth()
-    local right = row:GetRight()
-    if not right then return nil, full end   -- row not laid out yet
-    local left = ContentLeft(row.DataDisplay, nil, 0)
-    if not left then
-        -- Laid out, but the display shows nothing measurable (no roles picked,
-        -- a type that hides it). If even the display has no position, the
-        -- layout isn't ready after all.
-        if not row.DataDisplay:GetLeft() then return nil, full end
-        return 0, full
-    end
-    return math.min(full, math.max(0, right - left)), full
+-- Where the label goes: x offset from the row's left edge (just right of the
+-- roles), y offset of the display's centre from the row's centre, and the
+-- room left before the magnifier. nil while the row isn't laid out yet.
+local function LabelSpot(row)
+    local dd = row.DataDisplay
+    local rowL, rowR = row:GetLeft(), row:GetRight()
+    local _, rowY = row:GetCenter()
+    local _, ddY = dd:GetCenter()
+    if not (rowL and rowR and rowY and ddY) then return nil end
+    local right = ContentRight(dd, nil, 0) or dd:GetLeft()
+    if not right then return nil end
+    local x = right - rowL + 10
+    return x, ddY - rowY, (rowR - rowL) - 6 - 14 - 4 - x
 end
 
-local Decorate   -- defined below; DataReserve retries through it
+local Decorate   -- defined below; it retries itself until the row is laid out
 
 local function HideRow(e)
     e.zone:Hide()
@@ -372,14 +383,14 @@ function Decorate(row)
     e.api = api ~= nil
     e.hasSelf = info and info.hasSelf == true
     local targets = {}
-    if e.leader and not e.api and not e.hasSelf then targets[1] = e.leader end
+    if e.leader and not e.hasSelf then targets[1] = e.leader end
     local n = info and info.numMembers
     if not e.hasSelf and type(n) == "number" and not IsSecret(n) and n <= 10 then
         local leaderKey = Key(e.leader)
         for i = 1, n do
             local p = C_LFGList.GetSearchResultPlayerInfo(row.resultID, i)
             local name = p and Str(p.name)
-            if name and Key(name) ~= leaderKey and not Str(p.areaName) then
+            if name and Key(name) ~= leaderKey then
                 targets[#targets + 1] = name
             end
         end
@@ -395,39 +406,37 @@ function Decorate(row)
     local text
     if zone then
         text = zone
-    elseif state == "pending" then
+    elseif IsPending(e.leader) then
         text = NOTE_COLOR .. "looking up...|r"
     elseif state == "notfound" then
         text = NOTE_COLOR .. "not found|r"
     end
 
-    -- Bottom line, right-aligned against what the role/count display shows,
-    -- button last; ActivityName starts at x 10. Before the row is laid out the
-    -- display's content can't be measured: try again next frame.
-    local reserve, full = DataReserve(row)
-    if not reserve then
-        reserve = full
+    -- Right of the roles, centred on them; the magnifier at the row's right
+    -- edge. Before the row is laid out nothing can be measured: try again
+    -- next frame.
+    local x, y, room = LabelSpot(row)
+    if not x then
+        e.zone:Hide()
         if not e.retry then
             e.retry = true
             C_Timer.After(0, function() Decorate(row) end)
         end
-    else
-        e.retry = nil
+        UpdateButton(row, e)
+        return
     end
-    local dataRight = reserve + 4
+    e.retry = nil
     e.button:ClearAllPoints()
-    e.button:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -dataRight, 2)
+    e.button:SetPoint("RIGHT", row, "RIGHT", -6, y)
     e.zone:ClearAllPoints()
-    e.zone:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -(dataRight + 16), 2)
-    local free = row:GetWidth() - dataRight - 16 - (10 + row.ActivityName:GetStringWidth() + 8)
+    e.zone:SetPoint("LEFT", row, "LEFT", x, y)
     CopyFont(e.zone, row.ActivityName)
     e.zone:SetTextColor(ZONE_COLOR[1], ZONE_COLOR[2], ZONE_COLOR[3])
-    if text and free >= 30 then
-        e.zone:SetWidth(free)
+    if text and room >= 30 then
+        e.zone:SetWidth(room)
         e.zone:SetText(text)
         e.zone:Show()
     else
-        e.zone:SetWidth(math.max(free, 1))
         e.zone:SetText("")
         e.zone:Hide()
     end
@@ -440,9 +449,10 @@ end
 local function TipText(name, apiArea)
     local zone, state, at = ZoneFor(name, apiArea)
     if zone then
+        if IsPending(name) then return zone .. NOTE_COLOR .. " (looking up...)|r" end
         if state == "cache" then return zone .. NOTE_COLOR .. " (" .. Ago(at) .. ")|r" end
         return zone
-    elseif state == "pending" then
+    elseif IsPending(name) then
         return NOTE_COLOR .. "looking up...|r"
     elseif state == "notfound" then
         return NOTE_COLOR .. "not found (" .. Ago(at) .. ")|r"
@@ -591,7 +601,7 @@ function M:BuildOptions(parent, db, y)
         tooltip = "Show the leader's zone on each listing. The tooltip shows the members' zones while the module is on.",
         db = db, key = "showOnRows",
     })
-    _, y = W.Text(parent, y, "When a zone isn't sent with the listing, click the listing to look its leader up with /who, or its magnifier to look up the leader and then each member, one per click (one /who every 5 seconds).", { font = "small" })
+    _, y = W.Text(parent, y, "Clicking a listing looks its leader up with /who, which can name a more specific place: \"Goldshire (Elwynn Forest)\". The magnifier on a hovered listing looks up the leader, then each member, one per click (one /who every 5 seconds).", { font = "small" })
     return y
 end
 

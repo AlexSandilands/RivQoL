@@ -36,7 +36,7 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 | `friendlynames` | On the General page. Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
 | `iteminfo` | On the General page. Hold Alt while hovering an item to add its type, subtype, slot, item level and stack size to the tooltip (handy for Loot Filter rules). Options: show always instead of only with Alt, show IDs. |
 | `iconsearch` | On the General page. Adds a search box and a category filter to the icon pickers (new/edit macro, equipment set, guild bank tab). See below. |
-| `groupzone` | On the General page. Shows where players are in the Group Browser (Looking For Group > Browse): the leader's zone on each listing and the members' zones in its tooltip. See below. |
+| `groupzone` | On the General page. Shows where players are in the Group Browser (Looking For Group > Browse): the leader's location on each listing and every player's in its tooltip, with the subzone from /who on a click. See below. |
 | `lootfilter` | Off by default. When auto-looting, leaves junk on the corpse instead of picking it up: items on its skip list, or items matching a rule (type/subtype, max quality, max vendor price). Nothing is deleted and your bags are never touched. |
 
 ### Loot filter
@@ -97,14 +97,18 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 
 ### Group Browser zones
 
-- **Where the zone comes from**: the listing itself, when the server sends the player's zone with it
-  (`areaName` in `C_LFGList.GetSearchResultPlayerInfo`). Then it just shows, for everyone in the group.
-- **Otherwise, /who**: the game only lets addons send a /who from a click, so it can't look players up
-  in the background. Left-clicking a listing looks up its leader when the zone is missing or more than
-  5 minutes old. The magnifier on a hovered listing looks up the next player of that listing without a
-  current zone (leader first, then each member, one per click), or the leader again. One lookup at a
-  time, at most one every 5 seconds (the server limits /who). The tooltip says how old a result is ("3m ago"),
-  "looking up..." or "not found" (offline or hidden).
+- **Where it shows**: on each listing, right of its "Roles:" (the leader's location), and in the
+  listing's tooltip after each player.
+- **The zone** comes with the listing (`areaName` in `C_LFGList.GetSearchResultPlayerInfo`), so it
+  shows straight away for everyone.
+- **A more specific place** comes from /who. When it names somewhere other than the zone (usually the
+  subzone), both show: "Goldshire (Elwynn Forest)". The game only lets addons send a /who from a click,
+  so this can't run in the background:
+  - Left-clicking a listing looks up its leader, unless that was done in the last 5 minutes.
+  - The magnifier at the right of a hovered listing looks up the next player of that listing not
+    looked up recently (leader first, then each member, one per click), or the leader again.
+  - One lookup at a time, at most one every 5 seconds (the server limits /who). The tooltip says how
+    old a result is ("3m ago") or "looking up...".
 - **Quiet**: its /who answers stay out of chat, and the Who lists don't redraw for them. The game keeps
   only the last /who result, though, so a Who list redrawn later (scrolling, reopening) shows the
   module's last lookup instead of your search. A /who you send yourself always wins: the module's
