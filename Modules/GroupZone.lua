@@ -23,7 +23,7 @@ local M = {
     name = "groupzone",
     title = "Group Browser Zones",
     group = "general",
-    description = "Shows where players are in the Group Browser: on each listing and, for every member, in its tooltip.",
+    description = "Shows where players are in the Group Browser: the leader's zone on each listing, the members' zones in its tooltip.",
     defaults = {
         enabled = true,
         showOnRows = true,   -- zone label on each listing (the tooltip always has it)
@@ -93,15 +93,17 @@ local function CooldownLeft()
 end
 
 -- Ends our query: hands WHO_LIST_UPDATE back to the frames we silenced and
--- restores the who-to-UI setting (unless the user's own /who took over).
-local function Finish(yielded)
+-- restores the who-to-UI setting. Also when the user's own /who takes over:
+-- the setting is read when results arrive, so theirs goes where it normally
+-- would (chat for a typed /who).
+local function Finish()
     local p = pending
     if not p then return end
     pending = nil
     for _, f in ipairs(p.silenced) do
         if not f:IsEventRegistered("WHO_LIST_UPDATE") then f:RegisterEvent("WHO_LIST_UPDATE") end
     end
-    if not yielded and C_FriendList.SetWhoToUi then
+    if C_FriendList.SetWhoToUi then
         C_FriendList.SetWhoToUi(p.prevToUi and true or false)
     end
     RefreshAll()
@@ -174,14 +176,16 @@ local function OnAnySendWho()
     if sendingOurs then return end
     lastSent = GetTime()
     silenceUntil = 0
-    if pending then Finish(true) end
+    if pending then Finish() end
 end
 
 -- Safety net in case the server still prints our result to chat.
 local whoTotalPattern
 local function ChatFilter(_, _, msg)
     if not silenceKey or GetTime() > silenceUntil or type(msg) ~= "string" or IsSecret(msg) then return false end
-    if msg:lower():find("|hplayer:" .. silenceKey, 1, true) then return true end
+    -- The exact player, with or without a realm: |Hplayer:Name[-Realm]:...
+    local key = silenceKey:gsub("%p", "%%%0")
+    if msg:lower():find("|hplayer:" .. key .. "[%-:|]") then return true end
     if whoTotalPattern == nil then
         whoTotalPattern = false
         if type(WHO_NUM_RESULTS) == "string" then
@@ -196,7 +200,9 @@ end
 -------------------------------------------------------------------------------
 -- Rows
 -------------------------------------------------------------------------------
-local rowExtras = setmetatable({}, { __mode = "k" })   -- row -> { zone, button, leader, api }
+-- row -> { zone, button, leader, api, hasSelf, targets }
+--   targets: the listing's players whose zone isn't sent with it, leader first
+local rowExtras = setmetatable({}, { __mode = "k" })
 local tipLabels = setmetatable({}, { __mode = "k" })   -- tooltip member frame -> FontString
 local tipResultID
 
@@ -205,12 +211,33 @@ local function CopyFont(fs, from)
     if file then fs:SetFont(file, size, flags or "") end
 end
 
+local function IsFresh(name)
+    local c = cache[Key(name) or ""]
+    return c and GetTime() - c.at < FRESH
+end
+
+-- Who the magnifier looks up next: the first player of the listing without a
+-- current zone (leader first), else the leader again. One per click, since
+-- each /who needs its own click.
+local function NextTarget(e)
+    local targets = e.targets
+    if not (targets and targets[1]) then return nil end
+    for _, name in ipairs(targets) do
+        if not IsFresh(name) then return name end
+    end
+    return targets[1]
+end
+
 local function ShowButtonTip(btn)
     local e = btn.extras
     GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
     GameTooltip:SetText("Look up zone")
-    if e and e.leader then
-        GameTooltip:AddLine("Sends /who for " .. e.leader .. ".", 1, 1, 1, true)
+    local target = e and NextTarget(e)
+    if target then
+        GameTooltip:AddLine("Sends /who for " .. target .. ".", 1, 1, 1, true)
+        if #e.targets > 1 then
+            GameTooltip:AddLine("Click again for the next group member.", 0.7, 0.7, 0.7, true)
+        end
     end
     local wait = CooldownLeft()
     if pending then
@@ -222,7 +249,7 @@ local function ShowButtonTip(btn)
 end
 
 local function ButtonWanted(row, e)
-    return M.db.enabled and M.db.showOnRows and e.leader and not e.api and row:IsMouseOver()
+    return M.db.enabled and M.db.showOnRows and NextTarget(e) and row:IsMouseOver()
 end
 
 local function UpdateButton(row, e)
@@ -247,7 +274,8 @@ local function CreateExtras(row)
     btn:SetHighlightTexture("Interface\\Common\\UI-Searchbox-Icon", "ADD")
     btn.extras = e
     btn:SetScript("OnClick", function(self)
-        if e.leader then M.Lookup(e.leader, true) end
+        local target = NextTarget(e)
+        if target then M.Lookup(target, true) end
         if self:IsMouseOver() then ShowButtonTip(self) end
     end)
     btn:SetScript("OnEnter", ShowButtonTip)
@@ -262,8 +290,10 @@ local function CreateExtras(row)
     row:HookScript("OnLeave", function(self)
         if not e.button:IsMouseOver() then e.button:Hide() end
     end)
-    -- Clicking a listing (a hardware event) looks up its leader when needed.
-    row:HookScript("OnClick", function()
+    -- Left-clicking a listing (a hardware event) looks up its leader when
+    -- needed. Not your own or a delisted one (Blizzard ignores those clicks).
+    row:HookScript("OnClick", function(self, button)
+        if button ~= "LeftButton" or self.isDelisted or e.hasSelf then return end
         if M.db.enabled and e.leader and not e.api then M.Lookup(e.leader, false) end
     end)
 
@@ -271,12 +301,50 @@ local function CreateExtras(row)
     return e
 end
 
+-- Screen x of the left-most visible content in the role/count display, whose
+-- frame is much wider than what it shows (its icons and counts sit at its
+-- right). nil when the layout isn't resolved yet.
+local function ContentLeft(region, best, depth)
+    local kind = region:GetObjectType()
+    if kind == "FontString" then
+        local text = region:GetText()
+        if region:IsShown() and type(text) == "string" and not IsSecret(text) and text ~= "" then
+            local l, r, w = region:GetLeft(), region:GetRight(), region:GetStringWidth()
+            if l and r then
+                local j = region:GetJustifyH()
+                local x = j == "RIGHT" and r - w or j == "CENTER" and (l + r - w) / 2 or l
+                best = best and math.min(best, x) or x
+            end
+        end
+    elseif kind == "Texture" then
+        if region:IsShown() and (region:GetAlpha() or 0) > 0 and region:GetDrawLayer() ~= "BACKGROUND"
+            and (region:GetTexture() or region.GetAtlas and region:GetAtlas()) then
+            local l = region:GetLeft()
+            if l then best = best and math.min(best, l) or l end
+        end
+    elseif region:IsShown() and depth < 4 then
+        for _, r in ipairs({ region:GetRegions() }) do best = ContentLeft(r, best, depth + 1) end
+        for _, c in ipairs({ region:GetChildren() }) do best = ContentLeft(c, best, depth + 1) end
+    end
+    return best
+end
+
+-- Pixels the role/count display really takes from the row's right edge.
+local function DataReserve(row)
+    local full = 2 + row.DataDisplay:GetWidth()
+    local left, right = ContentLeft(row.DataDisplay, nil, 0), row:GetRight()
+    if not (left and right) then return nil, full end
+    return math.min(full, math.max(0, right - left)), full
+end
+
+local Decorate   -- defined below; DataReserve retries through it
+
 local function HideRow(e)
     e.zone:Hide()
     e.button:Hide()
 end
 
-local function Decorate(row)
+function Decorate(row)
     if not (row and row.resultID and row.ActivityName and row.DataDisplay) then return end
     local e = rowExtras[row]
     if not (M.db and M.db.enabled) then
@@ -290,6 +358,21 @@ local function Decorate(row)
     e.leader = info and Str(info.leaderName) or leaderInfo and Str(leaderInfo.name)
     local api = leaderInfo and Str(leaderInfo.areaName)
     e.api = api ~= nil
+    e.hasSelf = info and info.hasSelf == true
+    local targets = {}
+    if e.leader and not e.api and not e.hasSelf then targets[1] = e.leader end
+    local n = info and info.numMembers
+    if not e.hasSelf and type(n) == "number" and not IsSecret(n) and n <= 10 then
+        local leaderKey = Key(e.leader)
+        for i = 1, n do
+            local p = C_LFGList.GetSearchResultPlayerInfo(row.resultID, i)
+            local name = p and Str(p.name)
+            if name and Key(name) ~= leaderKey and not Str(p.areaName) then
+                targets[#targets + 1] = name
+            end
+        end
+    end
+    e.targets = targets
 
     if not (M.db.showOnRows and e.leader) then
         HideRow(e)
@@ -306,9 +389,20 @@ local function Decorate(row)
         text = NOTE_COLOR .. "not found|r"
     end
 
-    -- Bottom line, right-aligned against the role/count display (which sits
-    -- RIGHT -2 in a 312 px row), button last; ActivityName starts at x 10.
-    local dataRight = 2 + row.DataDisplay:GetWidth() + 2
+    -- Bottom line, right-aligned against what the role/count display shows,
+    -- button last; ActivityName starts at x 10. Before the row is laid out the
+    -- display's content can't be measured: try again next frame.
+    local reserve, full = DataReserve(row)
+    if not reserve then
+        reserve = full
+        if not e.retry then
+            e.retry = true
+            C_Timer.After(0, function() Decorate(row) end)
+        end
+    else
+        e.retry = nil
+    end
+    local dataRight = reserve + 4
     e.button:ClearAllPoints()
     e.button:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -dataRight, 2)
     e.zone:ClearAllPoints()
@@ -482,10 +576,10 @@ function M:BuildOptions(parent, db, y)
     local _
     _, y = W.Checkbox(parent, y, {
         label = "Show zone on listings",
-        tooltip = "Show the leader's zone on each listing. The tooltip always shows every member's zone while the module is on.",
+        tooltip = "Show the leader's zone on each listing. The tooltip shows the members' zones while the module is on.",
         db = db, key = "showOnRows",
     })
-    _, y = W.Text(parent, y, "When a zone isn't sent with the listing, click the listing or its magnifier to look the leader up with /who (one every few seconds).", { font = "small" })
+    _, y = W.Text(parent, y, "When a zone isn't sent with the listing, click the listing to look its leader up with /who, or its magnifier to look up the leader and then each member, one per click (one /who every 5 seconds).", { font = "small" })
     return y
 end
 
