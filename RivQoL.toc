@@ -13,3 +13,5 @@ UI\Options.lua
 Modules\FriendlyNames.lua
 Modules\LootFilter.lua
 Modules\ItemInfo.lua
+Data\IconData.lua
+Modules\IconSearch.lua

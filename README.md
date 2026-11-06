@@ -35,6 +35,7 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 |---|---|
 | `friendlynames` | On the General page. Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
 | `iteminfo` | On the General page. Hold Alt while hovering an item to add its type, subtype, slot, item level and stack size to the tooltip (handy for Loot Filter rules). Options: show always instead of only with Alt, show IDs. |
+| `iconsearch` | On the General page. Adds a search box and a category filter to the icon pickers (new/edit macro, equipment set, guild bank tab). See below. |
 | `lootfilter` | Off by default. When auto-looting, leaves junk on the corpse instead of picking it up: items on its skip list, or items matching a rule (type/subtype, max quality, max vendor price). Nothing is deleted and your bags are never touched. |
 
 ### Loot filter
@@ -72,6 +73,23 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   move or remove in Baganator's icon settings. The default and other bag UIs aren't supported.
 - When only skipped items are left, the loot window closes and they stay on the corpse. "Announce"
   prints each one in chat.
+
+### Icon search
+
+- **Search box**: matches every word you type (in any order, case-insensitive) against the icon's file
+  name (`Spell_Fire_FlameBolt`), the spells and items that use it, the classes and professions
+  whose spells use it, and its item types. "fireball", "two-handed swords", "wolf mount" and
+  "frost mage" all work, and so does a file ID. Spells in your spellbook are always searchable by name.
+- **Category dropdown**: My spells (your spellbook), My class, any class, profession, or item type
+  (Weapon > One-Handed Swords...). It combines with the search and with Blizzard's own All/Spell/Item filter.
+- **Hover an icon** to see its file name and what uses it (turn off with "Show icon details on hover").
+- The filter is cleared each time the picker closes. Until you filter, the picker is left untouched;
+  while a filter is set, the module answers the picker's icon list itself, so picking and saving
+  still go through Blizzard's code.
+- The names come from `Data/IconData.lua` (about 1.5 MB, parsed the first time you search). The game
+  has no API for icon names, so `scripts/build-icon-data.py` builds it from the client's data tables
+  as exported by [wago.tools](https://wago.tools). Run it again after a game patch adds icons:
+  `scripts/build-icon-data.py` (latest WoW Forever build) or `scripts/build-icon-data.py 1.60.1.70790`.
 
 ## Adding a module
 
