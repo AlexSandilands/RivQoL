@@ -21,7 +21,9 @@ Changes to the `.toc` (new files) also need a restart.
 
 ## Options window
 
-A module list on the left (checkbox = on/off) and the selected module's page on the right.
+A list on the left and the selected page on the right. **General** holds the small tweaks, each
+with its own on/off checkbox and options; bigger modules (Loot Filter) get their own entry, with
+an on/off checkbox in the list.
 Drag the window by its title bar and resize it from the bottom-right corner; size and position are
 saved.
 It uses stock Blizzard templates, so it looks native with no other addons. With EllesmereUI
@@ -32,7 +34,8 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 
 | Module | What it does |
 |---|---|
-| `friendlynames` | Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
+| `friendlynames` | On the General page. Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
+| `iteminfo` | On the General page. Hold Alt while hovering an item to add its type, subtype, slot, item level and stack size to the tooltip (handy for Loot Filter rules). Options: show always instead of only with Alt, show IDs. |
 | `lootfilter` | Off by default. When auto-looting, leaves junk on the corpse instead of picking it up: items on its skip list, or items matching a rule (type/subtype, max quality, max vendor price). Nothing is deleted and your bags are never touched. |
 
 ### Loot filter
@@ -76,6 +79,7 @@ local _, ns = ...
 local M = {
     name = "mymodule",           -- slash/saved-variables key
     title = "My Module",         -- shown in the options window
+    group = "general",           -- optional: list it on the General page instead of its own
     description = "...",
     defaults = { enabled = true, threshold = 5 },
 }

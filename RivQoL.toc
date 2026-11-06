@@ -12,3 +12,4 @@ UI\Widgets.lua
 UI\Options.lua
 Modules\FriendlyNames.lua
 Modules\LootFilter.lua
+Modules\ItemInfo.lua

@@ -64,29 +64,75 @@ local function PageWidth()
     return frame:GetWidth() - SIDEBAR_W - 2 * SIDE - 6 - 8 - SCROLLBAR_W - 2 * PAGE_PAD
 end
 
-local function BuildPage(name)
+-- Small modules set `group = "general"`: they share the General page (and
+-- one sidebar entry) instead of each getting their own.
+local GENERAL = "general"
+local GROUP_INFO = {
+    [GENERAL] = { title = "General", description = "Small tweaks, each with its own on/off switch." },
+}
+
+-- The sidebar entry / page a module lives on.
+local function PageKey(name)
     local mod = ns.modules[name]
+    return mod and mod.group or name
+end
+
+-- Sidebar entries in order: groups first (where they have modules), then
+-- the modules with a page of their own.
+local function Entries()
+    local list, seen = {}, {}
+    for _, name in ipairs(ns.order) do
+        local group = ns.modules[name].group
+        if group and not seen[group] then
+            seen[group] = true
+            table.insert(list, group)
+        end
+    end
+    for _, name in ipairs(ns.order) do
+        if not ns.modules[name].group then table.insert(list, name) end
+    end
+    return list
+end
+
+local function EntryTitle(key)
+    return GROUP_INFO[key] and GROUP_INFO[key].title or ModTitle(ns.modules[key])
+end
+
+-- A module's own options under `y` on `parent`; returns the new y.
+local function BuildModuleOptions(mod, parent, y)
+    if not mod.BuildOptions then return y end
+    y = y - W.GAP
+    local ok, res = pcall(mod.BuildOptions, mod, parent, mod.db, y)
+    if not ok then
+        geterrorhandler()(res)
+        local _
+        _, y = W.Text(parent, y, "|cffff5555This module's options failed to load.|r")
+        return y
+    elseif type(res) == "number" then
+        return res
+    end
+    return y - 600   -- builder didn't return its y (it should); leave room to scroll
+end
+
+local function EnabledCheckbox(parent, y, name, label)
+    return W.Checkbox(parent, y, {
+        label = label,
+        get = function() return ns.IsModuleEnabled(name) end,
+        set = function(v) ns.SetModuleEnabled(name, v) end,
+    })
+end
+
+local function BuildPage(key)
+    local group = GROUP_INFO[key]
     local scroll, content = MakeScroll(frame.PageInset, PageWidth())
     scroll:Hide()
-    content.rqModule = name
+    content.rqModule = not group and key or nil
     content.rqWidgets = {}
 
     -- Widgets lay out from x = 0; give the page some padding.
     local body = CreateFrame("Frame", nil, content)
     body:SetPoint("TOPLEFT", PAGE_PAD, -PAGE_PAD)
     body:SetSize(content:GetWidth(), 1)
-
-    local y = 0
-    local _
-    _, y = W.SectionHeader(body, y, ModTitle(mod))
-    if mod.description then
-        _, y = W.Text(body, y, mod.description, { font = "GameFontHighlightSmall" })
-    end
-    _, y = W.Checkbox(body, y, {
-        label = "Enabled",
-        get = function() return ns.IsModuleEnabled(name) end,
-        set = function(v) ns.SetModuleEnabled(name, v) end,
-    })
 
     -- For pages whose content grows or shrinks after they are built (lists):
     -- the builder lays its widgets out again and calls body:SetPageHeight(-y).
@@ -95,24 +141,47 @@ local function BuildPage(name)
         content:SetHeight(height + 2 * PAGE_PAD)
     end
 
-    if mod.BuildOptions then
-        y = y - W.GAP
-        local ok, res = pcall(mod.BuildOptions, mod, body, mod.db, y)
-        if not ok then
-            geterrorhandler()(res)
-            _, y = W.Text(body, y, "|cffff5555This module's options failed to load.|r")
-        elseif type(res) == "number" then
-            y = res
-        else
-            -- Builder didn't return its y (it should); leave room to scroll.
-            y = y - 600
+    local y = 0
+    local _
+    if group then
+        _, y = W.SectionHeader(body, y, group.title)
+        _, y = W.Text(body, y, group.description, { font = "GameFontHighlightSmall" })
+        for _, name in ipairs(ns.order) do
+            local mod = ns.modules[name]
+            if mod.group == key then
+                -- Each module gets its own frame, so its db/key widgets
+                -- report changes for that module.
+                local section = CreateFrame("Frame", nil, body)
+                section:SetPoint("TOPLEFT", 0, y - W.GAP)
+                section:SetSize(body:GetWidth(), 1)
+                section.rqModule = name
+                local sy = 0
+                _, sy = EnabledCheckbox(section, sy, name, ModTitle(mod))
+                if mod.description then
+                    _, sy = W.Text(section, sy + 4, mod.description, { x = 30, font = "GameFontHighlightSmall" })
+                end
+                local inner = CreateFrame("Frame", nil, section)
+                inner:SetPoint("TOPLEFT", 30, sy)
+                inner:SetSize(section:GetWidth() - 30, 1)
+                sy = sy + BuildModuleOptions(mod, inner, 0)
+                section:SetHeight(-sy)
+                y = y - W.GAP + sy - W.GAP
+            end
         end
+    else
+        local mod = ns.modules[key]
+        _, y = W.SectionHeader(body, y, ModTitle(mod))
+        if mod.description then
+            _, y = W.Text(body, y, mod.description, { font = "GameFontHighlightSmall" })
+        end
+        _, y = EnabledCheckbox(body, y, key, "Enabled")
+        y = BuildModuleOptions(mod, body, y)
     end
 
     content:SetHeight(-y + 2 * PAGE_PAD)
     body:SetHeight(-y)
     scroll.content = content
-    pages[name] = scroll
+    pages[key] = scroll
     return scroll
 end
 
@@ -127,7 +196,10 @@ local function RelayoutPages()
 end
 
 function Select(name)
-    if not ns.modules[name] then name = ns.order[1] end
+    -- A page key ("general" or a module with its own page), or a module
+    -- name, which opens the page it lives on.
+    if name and ns.modules[name] then name = PageKey(name) end
+    if not (GROUP_INFO[name] or ns.modules[name]) then name = Entries()[1] end
     if not name then return end
     selected = name
     ns.uidb.selected = name
@@ -144,17 +216,20 @@ end
 
 local function RefreshRows()
     for name, row in pairs(rows) do
-        local on = ns.IsModuleEnabled(name)
-        row.Check:SetChecked(on)
-        row.Name:SetTextColor(on and 1 or 0.6, on and 1 or 0.6, on and 1 or 0.6)
+        if row.Check then
+            local on = ns.IsModuleEnabled(name)
+            row.Check:SetChecked(on)
+            row.Name:SetTextColor(on and 1 or 0.6, on and 1 or 0.6, on and 1 or 0.6)
+        end
     end
 end
 
 local function BuildSidebar(parent)
     local width = SIDEBAR_W - 8 - SCROLLBAR_W - 2
     local _, list = MakeScroll(parent, width)
-    for i, name in ipairs(ns.order) do
-        local mod = ns.modules[name]
+    local entries = Entries()
+    for i, name in ipairs(entries) do
+        local isGroup = GROUP_INFO[name] ~= nil
         local row = CreateFrame("Button", nil, list)
         row:SetSize(width, ROW_H)
         row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
@@ -168,34 +243,39 @@ local function BuildSidebar(parent)
         hl:SetAllPoints()
         hl:SetColorTexture(1, 1, 1, 0.08)
 
-        local cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-        cb:SetSize(22, 22)
-        cb:SetPoint("LEFT", 2, 0)
-        cb:SetScript("OnClick", function(self)
-            ns.SetModuleEnabled(name, self:GetChecked())
-        end)
-        cb:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(ns.IsModuleEnabled(name) and "Turn off" or "Turn on", 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        cb:SetScript("OnLeave", GameTooltip_Hide)
-        row.Check = cb
+        -- A group has no single on/off switch: its modules have theirs on
+        -- its page. The name still lines up with the other rows.
+        local cb
+        if not isGroup then
+            cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+            cb:SetSize(22, 22)
+            cb:SetPoint("LEFT", 2, 0)
+            cb:SetScript("OnClick", function(self)
+                ns.SetModuleEnabled(name, self:GetChecked())
+            end)
+            cb:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(ns.IsModuleEnabled(name) and "Turn off" or "Turn on", 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            cb:SetScript("OnLeave", GameTooltip_Hide)
+            row.Check = cb
+            ns.Skin("Checkbox", cb)
+        end
 
         local fs = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        fs:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+        fs:SetPoint("LEFT", row, "LEFT", 2 + 22 + 4, 0)
         fs:SetPoint("RIGHT", -4, 0)
         fs:SetJustifyH("LEFT")
         fs:SetWordWrap(false)
-        fs:SetText(ModTitle(mod))
+        fs:SetText(EntryTitle(name))
         row.Name = fs
 
         row:SetScript("OnClick", function() Select(name) end)
-        ns.Skin("Checkbox", cb)
         ns.Skin("Font", fs)
         rows[name] = row
     end
-    list:SetHeight(math.max(1, #ns.order * ROW_H))
+    list:SetHeight(math.max(1, #entries * ROW_H))
 end
 
 ---------------------------------------------------------------------------
@@ -290,7 +370,7 @@ local function Create()
         RefreshPage(pages[selected])
     end)
     frame:Hide()
-    Select(ns.uidb.selected or ns.order[1])
+    Select(ns.uidb.selected)
 end
 
 function ns.OpenOptions(name)
@@ -312,7 +392,7 @@ end
 ns.RegisterCallback(function(name)
     if not frame or not frame:IsShown() then return end
     RefreshRows()
-    RefreshPage(pages[name])
+    RefreshPage(pages[PageKey(name)])
 end)
 
 ---------------------------------------------------------------------------
