@@ -73,6 +73,13 @@ local lastResult       -- the last lookup's outcome, for the magnifier's tooltip
 local RefreshAll        -- defined below
 local RefreshButtonTip  -- defined below
 
+-- /rq groupzone debug: trace each lookup step in chat (session only).
+local debugOn = false
+local function D(...)
+    if debugOn then ns.Print("|cff88ccff[zones]|r", ...) end
+end
+local function Esc(msg) return (tostring(msg):gsub("|", "||")) end
+
 local function IsPending(name)
     return pending ~= nil and pending.key == Key(name)
 end
@@ -129,14 +136,21 @@ end
 -- Looks up `name` with /who. Must run from a click (hardware event).
 -- force: look up even when the cached zone is still fresh.
 function M.Lookup(name, force)
-    if not (M.db and M.db.enabled and C_FriendList and C_FriendList.SendWho) then return end
+    if not (M.db and M.db.enabled and C_FriendList and C_FriendList.SendWho) then
+        D("lookup skipped: module off or no C_FriendList.SendWho")
+        return
+    end
     local key, short = Key(name), Short(name)
-    if not key or pending then return end
+    if not key then D("lookup skipped: no name") return end
+    if pending then D("lookup skipped for", short, "- still waiting for", pending.name) return end
     if not force then
         local c = cache[key]
-        if c and GetTime() - c.at < FRESH then return end
+        if c and GetTime() - c.at < FRESH then D("lookup skipped for", short, "- checked", Ago(c.at)) return end
     end
-    if CooldownLeft() > 0 then return end
+    if CooldownLeft() > 0 then
+        D(string.format("lookup skipped for %s - cooldown %.1f s", short, CooldownLeft()))
+        return
+    end
 
     local now = GetTime()
     local p = { key = key, name = short, sentAt = now, silenced = {} }
@@ -152,10 +166,13 @@ function M.Lookup(name, force)
     silenceKey, silenceUntil, silenceTotals = key, now + TIMEOUT + 1, true
     if C_FriendList.SetWhoToUi then C_FriendList.SetWhoToUi(true) end
 
+    D(string.format('sending /who n-"%s" (SetWhoToUi %s, was %s; silenced %d frame(s))', short,
+        C_FriendList.SetWhoToUi and "set" or "MISSING", tostring(p.prevToUi), #p.silenced))
     sendingOurs = true
     local ok, err = pcall(C_FriendList.SendWho, 'n-"' .. short .. '"')
     sendingOurs = false
     lastSent = now
+    D("SendWho returned", ok and "ok" or ("error: " .. tostring(err)))
     if not ok then
         Finish()
         geterrorhandler()(err)
@@ -163,6 +180,7 @@ function M.Lookup(name, force)
     end
     C_Timer.After(TIMEOUT, function()
         if pending == p then   -- no answer: stays as it was
+            D("no answer for", p.name, "after", TIMEOUT, "s")
             lastResult = { name = p.name, outcome = "noanswer", at = GetTime() }
             Finish()
         end
@@ -174,6 +192,7 @@ local whoFrame = CreateFrame("Frame")
 -- Records our lookup's answer (zone nil: not found) and ends the query next
 -- frame, so the silenced frames don't get the event that brought it.
 local function Resolve(p, zone)
+    D("answer for", p.name, ":", zone or "not found")
     cache[p.key] = { zone = zone, at = GetTime() }
     lastResult = { name = p.name, zone = zone, outcome = zone and "found" or "notfound", at = GetTime() }
     silenceUntil = GetTime() + 1   -- still hide the "1 player total" line that follows
@@ -183,7 +202,19 @@ local function Resolve(p, zone)
 end
 
 -- The answer as a Who list update (when the client honours SetWhoToUi).
-whoFrame:SetScript("OnEvent", function()
+whoFrame:SetScript("OnEvent", function(_, event, ...)
+    if event ~= "WHO_LIST_UPDATE" then
+        D(event, Esc(select(1, ...)), Esc(select(2, ...)))   -- ADDON_ACTION_BLOCKED / FORBIDDEN
+        return
+    end
+    if debugOn then
+        local n = C_FriendList.GetNumWhoResults() or 0
+        D("WHO_LIST_UPDATE:", n, "result(s)", pending and ("while waiting for " .. pending.name) or "(not ours)")
+        for i = 1, math.min(n, 3) do
+            local info = C_FriendList.GetWhoInfo(i)
+            D("  ", info and Esc(info.fullName), "-", info and Esc(info.area))
+        end
+    end
     local p = pending
     if not p then return end
     for i = 1, C_FriendList.GetNumWhoResults() or 0 do
@@ -200,8 +231,9 @@ end)
 
 -- The user's own /who (slash command, Who tab, LFG Who tab) goes first: drop
 -- ours and let theirs reach the UI and chat as usual.
-local function OnAnySendWho()
+local function OnAnySendWho(filter)
     if sendingOurs then return end
+    D("someone else's /who:", Esc(filter), pending and ("- dropping " .. pending.name) or "")
     lastSent = GetTime()
     -- Our answer may still arrive: keep hiding its line about our player
     -- until the original timeout, but let the user's total line through.
@@ -224,6 +256,7 @@ end
 local whoTotalPattern
 local function ChatFilter(_, _, msg)
     if not silenceKey or GetTime() > silenceUntil or type(msg) ~= "string" or IsSecret(msg) then return false end
+    D("system line:", Esc(msg))
     -- The exact player, with or without a realm: |Hplayer:Name[-Realm]:...
     local key = silenceKey:gsub("%p", "%%%0")
     if msg:lower():find("|hplayer:" .. key .. "[%-:|]") then
@@ -351,6 +384,7 @@ local function CreateExtras(row)
     btn.extras = e
     btn:SetScript("OnClick", function(self)
         local target = NextTarget(e)
+        D("magnifier clicked; target:", target or "none")
         if target then M.Lookup(target, true) end
         if self:IsMouseOver() then ShowButtonTip(self) end
     end)
@@ -616,6 +650,8 @@ end)
 function M:OnEnable()
     HookWho()
     whoFrame:RegisterEvent("WHO_LIST_UPDATE")
+    whoFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
+    whoFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
     if _G.LFGBrowseSearchEntry_Update then
         InstallHooks()
         RefreshAll()
@@ -628,9 +664,23 @@ function M:OnDisable()
     -- Hooks stay installed but do nothing while off.
     Finish()
     whoFrame:UnregisterEvent("WHO_LIST_UPDATE")
+    whoFrame:UnregisterEvent("ADDON_ACTION_BLOCKED")
+    whoFrame:UnregisterEvent("ADDON_ACTION_FORBIDDEN")
     for _, e in pairs(rowExtras) do HideRow(e) end
     RefreshAll()   -- redraws an open tooltip without the zones
     for _, fs in pairs(tipLabels) do fs:Hide() end
+end
+
+function M:OnSlash(arg)
+    if arg == "debug" then
+        debugOn = not debugOn
+        ns.Print("Group Browser zone lookups: debug", debugOn and "|cff00ff00on|r (click a listing or its magnifier)" or "|cffff5555off|r")
+        if debugOn then
+            D("SetWhoToUi:", C_FriendList.SetWhoToUi and "yes" or "MISSING", "GetWhoToUi:", C_FriendList.GetWhoToUi and tostring(C_FriendList.GetWhoToUi()) or "MISSING",
+              "chat filter API:", ChatFrame_AddMessageEventFilter and "yes" or "MISSING", "hooks:", tostring(hooked))
+        end
+        return true
+    end
 end
 
 function M:BuildOptions(parent, db, y)
