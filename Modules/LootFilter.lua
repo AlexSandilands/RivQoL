@@ -559,33 +559,41 @@ local function ItemRow(parent, y, list, itemID)
     row:SetPoint("TOPLEFT", 0, y)
     row:SetSize(math.min(parent:GetWidth() - 16, 420), ROW_H)
 
-    local icon = row:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(20, 20)
-    icon:SetPoint("LEFT", 2, 0)
+    local T = ns.Theme
+    local hl = row:CreateTexture(nil, "BACKGROUND")
+    hl:SetAllPoints()
+    T.Gradient(hl, "HORIZONTAL", { 1, 1, 1, 0.06 }, { 1, 1, 1, 0 })
+    hl:Hide()
+
+    local frameIcon = CreateFrame("Frame", nil, row, "BackdropTemplate")
+    frameIcon:SetSize(22, 22)
+    frameIcon:SetPoint("LEFT", 2, 0)
+    T.Backdrop(frameIcon, T.colors.control, T.colors.border)
+    local icon = frameIcon:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", 1, -1)
+    icon:SetPoint("BOTTOMRIGHT", -1, 1)
+    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     icon:SetTexture(C_Item.GetItemIconByID(itemID))
 
-    local remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-    remove:SetSize(70, 20)
+    local remove = T.Button(row, REMOVE or "Remove", 70, 20, "danger")
     remove:SetPoint("RIGHT")
-    remove:SetText(REMOVE or "Remove")
     remove:SetScript("OnClick", function() M:RemoveItem(list, itemID) end)
-    ns.Skin("Button", remove)
 
-    local name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    name:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+    local name = T.FontString(row, "body")
+    name:SetPoint("LEFT", frameIcon, "RIGHT", 8, 0)
     name:SetPoint("RIGHT", remove, "LEFT", -6, 0)
     name:SetJustifyH("LEFT")
     name:SetWordWrap(false)
-    ns.Skin("Font", name)
     SetItemName(name, itemID)
 
     row:EnableMouse(true)
     row:SetScript("OnEnter", function(self)
+        hl:Show()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetItemByID(itemID)
         GameTooltip:Show()
     end)
-    row:SetScript("OnLeave", GameTooltip_Hide)
+    row:SetScript("OnLeave", function() hl:Hide(); GameTooltip_Hide() end)
     return row, y - ROW_H - 2
 end
 
@@ -593,7 +601,7 @@ local function ItemListSection(parent, y, list, title, help, dropLabel)
     local W = ns.Widgets
     local _
     _, y = W.SectionHeader(parent, y, title)
-    _, y = W.Text(parent, y, help, { font = "GameFontHighlightSmall" })
+    _, y = W.Text(parent, y, help, { font = "small" })
     _, y = W.ItemDropSlot(parent, y, {
         label = dropLabel,
         tooltip = "Drag an item from your bags onto this slot, or Alt-click an item in your bags while this page is open.",
@@ -601,7 +609,7 @@ local function ItemListSection(parent, y, list, title, help, dropLabel)
     })
     local ids = SortedIDs(M.db[list])
     if #ids == 0 then
-        _, y = W.Text(parent, y, "No items yet.", { font = "GameFontDisable" })
+        _, y = W.Text(parent, y, "No items yet.", { font = "dim" })
     end
     for _, id in ipairs(ids) do
         local _row
@@ -646,19 +654,25 @@ local function HasCondition(rule)
 end
 
 local function RuleBlock(parent, y, index, rule)
-    local W = ns.Widgets
+    local W, T = ns.Widgets, ns.Theme
     local _
+    local top = y
+
+    -- Each rule sits on its own card.
+    local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    card:SetPoint("TOPLEFT", -6, y + 6)
+    card:SetWidth(math.min(parent:GetWidth() - 4, 480))
+    T.Backdrop(card, { 0.11, 0.10, 0.085, 0.55 }, { T.colors.border[1], T.colors.border[2], T.colors.border[3], 0.5 })
+
     -- Editable name; empty (or the default) means "Rule N".
-    local header = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    header:SetSize(200, 20)
-    header:SetPoint("TOPLEFT", 6, y)   -- the template's border sits left of its anchor
-    header:SetAutoFocus(false)
+    local header = T.EditBox(parent, 200, 22)
+    header:SetPoint("TOPLEFT", 0, y)
     header:SetMaxLetters(40)
-    header:SetFontObject("GameFontNormal")
+    header:SetFontObject(T.fonts.accent)
     local function ShowName() header:SetText(M:RuleName(index)); header:SetCursorPosition(0) end
     header:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     header:SetScript("OnEscapePressed", function(self) self.cancel = true; self:ClearFocus() end)
-    header:SetScript("OnEditFocusLost", function(self)
+    header:HookScript("OnEditFocusLost", function(self)
         if self.cancel then
             self.cancel = nil
         else
@@ -671,25 +685,21 @@ local function RuleBlock(parent, y, index, rule)
         end
         ShowName()
     end)
-    header:SetScript("OnEnter", function(self)
+    header:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Rule name", 1, 1, 1)
         GameTooltip:AddLine("Click to rename. Shown in chat when this rule leaves an item behind. Clear it to go back to \"Rule " .. index .. "\".", nil, nil, nil, true)
         GameTooltip:Show()
     end)
-    header:SetScript("OnLeave", GameTooltip_Hide)
+    header:HookScript("OnLeave", GameTooltip_Hide)
     ShowName()
-    ns.Skin("EditBox", header)
-    local delete = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    delete:SetSize(70, 20)
-    delete:SetPoint("LEFT", header, "RIGHT", 12, 0)
-    delete:SetText(DELETE or "Delete")
+    local delete = T.Button(parent, DELETE or "Delete", 70, 22, "danger")
+    delete:SetPoint("LEFT", header, "RIGHT", 8, 0)
     delete:SetScript("OnClick", function()
         table.remove(M.db.rules, index)
         Rebuild()
         ns.FireChanged(M.name, "rules")
     end)
-    ns.Skin("Button", delete)
     y = y - 22 - W.GAP
 
     local warning
@@ -746,9 +756,10 @@ local function RuleBlock(parent, y, index, rule)
         tooltip = "Items whose tooltip has any of these (comma-separated) are not matched by this rule, e.g. \"mana\". This narrows the rule; on its own it isn't a condition.",
     })
     warning, y = W.Text(parent, y, "|cffff8800This rule has no conditions yet, so it skips nothing.|r",
-        { x = 12, font = "GameFontHighlightSmall" })
+        { x = 12, font = "small" })
     UpdateWarning()
-    return y - W.GAP
+    card:SetHeight(top - y + 4)
+    return y - W.GAP - 8
 end
 
 local function RulesSection(parent, y)
@@ -756,7 +767,7 @@ local function RulesSection(parent, y)
     local _
     _, y = W.SectionHeader(parent, y, "Rules")
     _, y = W.Text(parent, y, "An item is skipped when all conditions of any rule match it. Rules never skip quest items or Rare and better items.",
-        { font = "GameFontHighlightSmall" })
+        { font = "small" })
     for i, rule in ipairs(M.db.rules) do
         y = RuleBlock(parent, y, i, rule)
     end
@@ -810,17 +821,17 @@ function M:BuildOptions(parent, db, y)
     })
     if not M.baganatorRegistered then
         _, y = W.Text(parent, y, "|cff999999Bag highlighting needs Baganator, which isn't loaded.|r",
-            { x = 30, font = "GameFontHighlightSmall" })
+            { x = 30, font = "small" })
     end
     local count
-    count, y = W.Text(parent, y, "", { font = "GameFontHighlightSmall" })
+    count, y = W.Text(parent, y, "", { font = "small" })
     function count:Refresh()
         self:SetText("Left on corpses this session: " .. M.skippedCount)
     end
     count:Refresh()
     TrackOnPage(parent, count)
     _, y = W.Text(parent, y, "Filters only apply while auto-looting. When you loot by hand, you pick what to take. Coins and currencies are always looted, and nothing is ever deleted.",
-        { font = "GameFontHighlightSmall" })
+        { font = "small" })
     y = y - W.GAP
 
     -- Everything below is laid out again whenever a list or the rules change.

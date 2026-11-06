@@ -26,9 +26,8 @@ with its own on/off checkbox and options; bigger modules (Loot Filter) get their
 an on/off checkbox in the list.
 Drag the window by its title bar and resize it from the bottom-right corner; size and position are
 saved.
-It uses stock Blizzard templates, so it looks native with no other addons. With EllesmereUI
-installed it is themed through EUI's Skinning API and follows the EUI theme live; turn that off
-per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addons.
+It has its own look (`UI/Theme.lua`): warm dark panels, thin bronze borders that turn gold on
+hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI addons.
 
 ## Modules
 
@@ -118,14 +117,16 @@ Each is `widget, nextY = W.X(parent, y, opts)` and lays out top-down. Value widg
 | `SectionHeader(parent, y, text)` | |
 | `Text(parent, y, text, opts)` | `font`, `width` |
 | `Checkbox` | `onChange(v)` |
-| `Button` | `text`, `width`, `onClick` |
+| `Button` | `text`, `width`, `onClick`, `variant` ("danger") |
 | `Slider` | `min`, `max`, `step`, `format(v)`, `width` |
 | `MoneyInput` | value is copper |
 | `TextInput` | `width`, `maxLetters`; saved on Enter / focus loss |
 | `Dropdown` | `choices = {{value=, text=}, ...}` or a function returning them, `width` |
 | `ItemDropSlot` | `onItem(itemID, link)`, `size`; `slot:SetItem(itemID)` |
 
-Frames you build yourself can be themed with `ns.Skin(kind, frame, ...)`, where `kind` is an
-EllesmereUI skin primitive (`"Button"`, `"Checkbox"`, `"EditBox"`, ...); it does nothing without EUI.
+Controls you build yourself should come from `ns.Theme` so they match: `T.Button(parent, text, w, h, variant)`
+(`"danger"` for destructive actions), `T.Checkbox`, `T.EditBox` (hook, don't set, its focus scripts),
+`T.Slot`, `T.FontString(parent, "body" | "small" | "header" ...)`, `T.Backdrop`, `T.Rule`, and the
+palette in `T.colors`.
 
 New files must be added to `RivQoL.toc`, which needs a full game restart.
