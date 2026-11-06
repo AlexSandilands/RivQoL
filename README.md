@@ -36,6 +36,7 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 | `friendlynames` | On the General page. Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
 | `iteminfo` | On the General page. Hold Alt while hovering an item to add its type, subtype, slot, item level and stack size to the tooltip (handy for Loot Filter rules). Options: show always instead of only with Alt, show IDs. |
 | `iconsearch` | On the General page. Adds a search box and a category filter to the icon pickers (new/edit macro, equipment set, guild bank tab). See below. |
+| `groupzone` | On the General page. Shows where players are in the Group Browser (Looking For Group > Browse): the leader's location on each listing and every player's in its tooltip, with the subzone from /who on a click. See below. |
 | `lootfilter` | Off by default. When auto-looting, leaves junk on the corpse instead of picking it up: items on its skip list, or items matching a rule (type/subtype, max quality, max vendor price). Nothing is deleted and your bags are never touched. |
 
 ### Loot filter
@@ -93,6 +94,29 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   has no API for icon names, so `scripts/build-icon-data.py` builds it from the client's data tables
   as exported by [wago.tools](https://wago.tools). Run it again after a game patch adds icons:
   `scripts/build-icon-data.py` (latest WoW Forever build) or `scripts/build-icon-data.py 1.60.1.70790`.
+
+### Group Browser zones
+
+- **Where it shows**: on each listing, right-aligned on its bottom line (the leader's location), and
+  in the listing's tooltip after each player.
+- **The zone** comes with the listing (`areaName` in `C_LFGList.GetSearchResultPlayerInfo`), so it
+  shows straight away for everyone.
+- **A more specific place** comes from /who. When it names somewhere other than the zone (usually the
+  subzone), both show: "Goldshire (Elwynn Forest)". The game only lets addons send a /who from a click,
+  so this can't run in the background:
+  - Left-clicking a listing looks up its leader, unless that was done in the last 5 minutes.
+  - The magnifier at the right of a hovered listing looks up the next player of that listing not
+    looked up recently (leader first, then each member, one per click), or the leader again.
+  - One lookup at a time, at most one every 5 seconds (the server limits /who). The tooltip says how
+    old a result is ("3m ago") or "looking up...", and the magnifier's tooltip says what the last
+    lookup found (or that the server didn't answer).
+- **Quiet**: it reads its /who answer from the chat line (which names the subzone) and hides that
+  line, and the Who lists don't redraw for it. The game keeps
+  only the last /who result, though, so a Who list redrawn later (scrolling, reopening) shows the
+  module's last lookup instead of your search. A /who you send yourself always wins: the module's
+  pending lookup is dropped and yours shows as usual.
+- **Show zone on listings** (option): turn the label on listings off and keep only the tooltip.
+  Labels copy the font of the listing's own text, so they match EllesmereUI's skin.
 
 ## Adding a module
 
