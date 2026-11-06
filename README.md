@@ -73,8 +73,8 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   would leave behind glow like a proc'd action button, so you can check your lists and rules.
   It's a Baganator icon-corner widget ("RivQoL: Loot Filter match", top left by default) that you can
   move or remove in Baganator's icon settings. The default and other bag UIs aren't supported.
-- When only skipped items are left, the loot window closes after a short pause and they stay on the corpse. "Announce"
-  prints each one in chat.
+- When only skipped items are left, the loot window closes after a short pause and they stay on the
+  corpse. "Announce" prints each one in chat.
 
 ## Adding a module
 

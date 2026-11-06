@@ -244,7 +244,15 @@ local function SlotFilled(slot)
     return kind ~= nil and kind ~= SLOT_NONE
 end
 
-local LootDelay
+-- Seconds between looted slots, like the game's own auto-loot (CVar
+-- autoLootRate, in ms, where the client has it). Never instant: at 0 the
+-- window would flash open and shut.
+local DEFAULT_RATE = 150
+local function LootDelay()
+    local ms = tonumber(GetCVar("autoLootRate") or "")
+    if not ms or ms <= 0 then ms = DEFAULT_RATE end
+    return ms / 1000
+end
 
 -- Is every item left in the window one we skip (or nothing left at all)?
 local function OnlySkippedLeft(current)
@@ -287,16 +295,6 @@ local function Announce(link, quantity, reason, ruleIndex)
     local why = reason == "rule" and M:RuleName(ruleIndex) or "skip list"
     ns.Print("left on corpse:", (link or "?") .. ((quantity and quantity > 1) and ("x" .. quantity) or "")
         .. " |cff999999(" .. why .. ")|r")
-end
-
--- Seconds between looted slots, like the game's own auto-loot (CVar
--- autoLootRate, in ms, where the client has it). Never instant: at 0 the
--- window would flash open and shut.
-local DEFAULT_RATE = 150
-function LootDelay()
-    local ms = tonumber(GetCVar("autoLootRate") or "")
-    if not ms or ms <= 0 then ms = DEFAULT_RATE end
-    return ms / 1000
 end
 
 -- Loot the queued slots one at a time, stopping if the window closes.
