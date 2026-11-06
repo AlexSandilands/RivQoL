@@ -22,6 +22,7 @@ end
 --                 options window below the title, description and Enabled
 --                 toggle: lay widgets out from `y` (see UI/Widgets.lua) and
 --                 return the final y so the page scrolls to fit
+--                 (page:SetPageHeight(h) resizes it later if content grows)
 function ns.RegisterModule(mod)
     assert(mod.name and not ns.modules[mod.name], "RivQoL: bad or duplicate module name")
     ns.modules[mod.name] = mod

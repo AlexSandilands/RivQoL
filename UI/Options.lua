@@ -83,6 +83,13 @@ local function BuildPage(name)
         set = function(v) ns.SetModuleEnabled(name, v) end,
     })
 
+    -- For pages whose content grows or shrinks after they are built (lists):
+    -- the builder lays its widgets out again and calls body:SetPageHeight(-y).
+    function body:SetPageHeight(height)
+        self:SetHeight(height)
+        content:SetHeight(height + 2 * PAGE_PAD)
+    end
+
     if mod.BuildOptions then
         y = y - W.GAP
         local ok, res = pcall(mod.BuildOptions, mod, body, mod.db, y)

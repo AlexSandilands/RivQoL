@@ -31,6 +31,27 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 | Module | What it does |
 |---|---|
 | `friendlynames` | Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
+| `lootfilter` | Off by default. When auto-looting, leaves junk on the corpse instead of picking it up: items on its skip list, or items matching a rule (type/subtype, max quality, max vendor price). Nothing is deleted and your bags are never touched. |
+
+### Loot filter
+
+- **Turn it on** in the options window (`/rq` > Loot Filter). While it is on it does the auto-looting
+  itself: it sets the game's `autoLootDefault` CVar to 0 and uses its own Auto-loot toggle, seeded
+  from the game's setting. It hands the CVar back (as the toggle has it) when turned off and at every
+  logout, so disabling or removing the addon never leaves auto-loot off. The auto-loot key
+  (Interface > Controls) still inverts it, and ticking the game's own Auto Loot box while the module
+  is on just turns its toggle on.
+- **Filters only apply when auto-looting.** When you loot by hand (auto-loot off, or the key held),
+  the loot window is yours as usual.
+- **Always skip / Never skip lists**: drag an item from your bags onto the slot, or Alt-click it in
+  your bags while the page is open. An item is on at most one list.
+- **Rules**: an item is skipped when all set conditions of any rule match. A max sell price of 0
+  means any price, and a rule with no conditions does nothing.
+- **Always looted**: coins and currencies; anything on the never-skip list; and, unless it is on the
+  skip list, quest items, Rare or better items, items whose info isn't cached yet, and (for rules
+  with a price limit) items with no vendor price.
+- When only skipped items are left, the loot window closes and they stay on the corpse. "Announce"
+  prints each one in chat.
 
 ## Adding a module
 
@@ -58,6 +79,9 @@ function M:BuildOptions(page, db, y)
 end
 ns.RegisterModule(M)
 ```
+
+A page whose content changes size after it is built (a list you add to) can lay its widgets out
+again and call `page:SetPageHeight(-y)` so the page scrolls to fit (see `Modules/LootFilter.lua`).
 
 Turn modules on/off with `ns.SetModuleEnabled(name, on)` (never set `db.enabled` directly), and
 listen for changes with `ns.RegisterCallback(function(module, key) ... end)`.
