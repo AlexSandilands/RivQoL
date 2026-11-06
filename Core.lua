@@ -121,9 +121,6 @@ SlashCmdList.RIVQOL = function(msg)
         ns.Print(arg, ns.modules[arg].db.enabled and "|cff00ff00enabled|r" or "|cffff5555disabled|r")
         return
     end
-    -- /rq <module> <args>: a module's own subcommand, if it has one.
-    local mod = ns.modules[cmd]
-    if mod and mod.OnSlash and mod:OnSlash(arg or "") then return end
     if cmd == "" and ns.ToggleOptions then
         ns.ToggleOptions()
         return
