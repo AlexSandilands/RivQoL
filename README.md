@@ -17,7 +17,7 @@ Changes to the `.toc` (new files) also need a restart.
 
 Releases go to [CurseForge](https://www.curseforge.com/wow/addons/rivqol) (project 1787745) and
 GitHub Releases. Pushing a `v*` tag runs `.github/workflows/release.yml`, which uses the
-[BigWigs packager](https://github.com/BigWigsMods/packager) to build `RivQoL-<tag>.zip` and upload it:
+[BigWigs packager](https://github.com/BigWigsMods/packager) to build the `RivQoL-<tag>` zip and upload it:
 
 ```
 git tag v0.2.0
@@ -29,7 +29,7 @@ git push origin v0.2.0
 - A tag with `alpha` or `beta` in it (`v0.2.0-beta1`) uploads as an Alpha/Beta file instead of a Release.
 - The changelog is built from the commit messages since the previous tag.
 - What goes in the zip is set by `.pkgmeta` (dotfiles and `scripts/` are left out).
-- It needs a `CF_API_KEY` repository secret: a CurseForge API token from
+- It needs a `CF_API_KEY` repository secret (passed to the packager as `CF_API_TOKEN`): a CurseForge API token from
   <https://authors.curseforge.com/account/api-tokens>.
 
 ## Commands
