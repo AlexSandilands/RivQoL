@@ -18,9 +18,10 @@ end
 --                 whenever it is turned on in-session, so it must be safe to
 --                 call more than once
 --   OnDisable(db) optional, called when the module is turned off in-session
---   BuildOptions(page, db) optional, fills the module's page in the options
---                 window (see UI/Widgets.lua); without it the page shows the
---                 description and the on/off toggle
+--   BuildOptions(page, db, y) -> y  optional, fills the module's page in the
+--                 options window below the title, description and Enabled
+--                 toggle: lay widgets out from `y` (see UI/Widgets.lua) and
+--                 return the final y so the page scrolls to fit
 function ns.RegisterModule(mod)
     assert(mod.name and not ns.modules[mod.name], "RivQoL: bad or duplicate module name")
     ns.modules[mod.name] = mod

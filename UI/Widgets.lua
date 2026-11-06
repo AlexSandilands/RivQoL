@@ -45,6 +45,9 @@ end
 
 local function Tooltip(frame, title, text)
     if not text then return end
+    -- Plain holder frames get no OnEnter without mouse motion; motion alone
+    -- doesn't swallow clicks meant for the controls inside.
+    if frame.SetMouseMotionEnabled then frame:SetMouseMotionEnabled(true) end
     frame:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(title or "", 1, 1, 1)
@@ -67,7 +70,7 @@ function W.SectionHeader(parent, y, text, opts)
     local fs = parent:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     fs:SetPoint("TOPLEFT", x, y)
     fs:SetText(text)
-    ns.Skin("Font", fs)
+    ns.Skin("Font", fs)   -- before measuring: the EUI font can change the height
     local line = parent:CreateTexture(nil, "ARTWORK")
     line:SetColorTexture(1, 1, 1, 0.15)
     line:SetHeight(1)
@@ -87,7 +90,7 @@ function W.Text(parent, y, text, opts)
     fs:SetJustifyH("LEFT")
     fs:SetWordWrap(true)
     fs:SetText(text)
-    ns.Skin("Font", fs)
+    ns.Skin("Font", fs)   -- before measuring: the EUI font can change line wrapping
     return fs, y - fs:GetStringHeight() - GAP
 end
 
@@ -177,7 +180,7 @@ function W.Slider(parent, y, opts)
 end
 
 -- Gold / silver / copper input bound to a copper amount.
--- opts: label, get/set or db/key, tooltip
+-- opts: label, get/set or db/key, tooltip. Saved on Enter / focus loss.
 function W.MoneyInput(parent, y, opts)
     local get, set = Bind(parent, opts)
     local x = opts.x or 0
@@ -217,10 +220,20 @@ function W.MoneyInput(parent, y, opts)
         box:SetNumeric(true)
         box:SetMaxLetters(p.max and 2 or 7)
         box:SetJustifyH("RIGHT")
-        box:SetScript("OnTextChanged", function(_, user) if user then Commit() end end)
-        box:SetScript("OnEnterPressed", EditBox_ClearFocus)
-        box:SetScript("OnEscapePressed", function(self) self:ClearFocus(); holder:Refresh() end)
-        box:SetScript("OnEditFocusLost", function() holder:Refresh() end)
+        -- Saved on Enter or when focus leaves; Escape restores the saved value.
+        box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        box:SetScript("OnEscapePressed", function(self)
+            self.cancel = true
+            self:ClearFocus()
+        end)
+        box:SetScript("OnEditFocusLost", function(self)
+            if self.cancel then
+                self.cancel = nil
+            else
+                Commit()
+            end
+            holder:Refresh()
+        end)
         local icon = holder:CreateTexture(nil, "ARTWORK")
         icon:SetSize(13, 13)
         icon:SetTexture(p.icon)
