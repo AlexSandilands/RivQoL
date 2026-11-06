@@ -19,3 +19,4 @@ Modules\LootFilter.lua
 Modules\ItemInfo.lua
 Data\IconData.lua
 Modules\IconSearch.lua
+Modules\GroupZone.lua
