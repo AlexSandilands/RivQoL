@@ -38,9 +38,12 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 - **Turn it on** in the options window (`/rq` > Loot Filter). While it is on it does the auto-looting
   itself: it sets the game's `autoLootDefault` CVar to 0 and uses its own Auto-loot toggle, seeded
   from the game's setting. It hands the CVar back (as the toggle has it) when turned off and at every
-  logout, so disabling or removing the addon never leaves auto-loot off. The auto-loot key
-  (Interface > Controls) still inverts it, and ticking the game's own Auto Loot box while the module
-  is on just turns its toggle on.
+  logout, so disabling or removing the addon never leaves auto-loot off. Ticking the game's own
+  Auto Loot box while the module is on just turns its toggle on.
+- **The auto-loot key** (Interface > Controls) still inverts auto-loot. With the CVar at 0 the game
+  would loot everything itself while that key is held, so the module also sets the key's binding to
+  NONE for the session and checks the key itself. That change is never saved: if the key bindings are
+  saved meanwhile, the real key is written back, and picking a new key there is simply adopted.
 - **Filters only apply when auto-looting.** When you loot by hand (auto-loot off, or the key held),
   the loot window is yours as usual.
 - **Always skip / Never skip lists**: drag an item from your bags onto the slot, or Alt-click it in

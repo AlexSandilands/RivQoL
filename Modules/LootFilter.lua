@@ -7,7 +7,10 @@
 -- toggle, and that toggle is written back to the CVar when the module is
 -- disabled), and on LOOT_READY loots every slot except the
 -- filtered ones, then closes the window once only skipped items are left.
--- The auto-loot modifier key (Interface > Controls) still inverts auto-loot.
+-- The auto-loot key (Interface > Controls) still inverts auto-loot: the
+-- client would otherwise loot everything itself while the key is held, so
+-- the module also sets the key binding to NONE while it is on (for this
+-- session only, keeping the saved bindings intact) and checks the key itself.
 --
 -- An item is skipped when it is on the skip list, or when any rule matches it
 -- (all of a rule's conditions must hold). Safety rails, checked in order:
@@ -24,6 +27,8 @@ local RARE = (Enum.ItemQuality and Enum.ItemQuality.Rare) or 3
 local QUEST_CLASS = (Enum.ItemClass and (Enum.ItemClass.Questitem or Enum.ItemClass.QuestItem)) or 12
 local BIND_QUEST = 4
 local SLOT_ITEM = (Enum.LootSlotType and Enum.LootSlotType.Item) or LOOT_SLOT_ITEM or 1
+local SLOT_NONE = (Enum.LootSlotType and Enum.LootSlotType.None) or LOOT_SLOT_NONE or 0
+local MODCLICK = "AUTOLOOTTOGGLE"
 
 local SetCVar = (C_CVar and C_CVar.SetCVar) or SetCVar
 local GetCVar = (C_CVar and C_CVar.GetCVar) or GetCVar
@@ -42,6 +47,8 @@ local M = {
         announce = true,    -- chat line per skipped item
         -- autoLoot: our auto-loot on/off, seeded from the game's setting
         -- tookOver: true while we hold autoLootDefault at 0
+        -- lootKey: the auto-loot key ("SHIFT", "CTRL", "ALT", "NONE") we read the
+        --   binding as when taking over; the binding itself is NONE meanwhile
     },
 }
 
@@ -119,17 +126,38 @@ end
 
 local session            -- state for the open loot window, nil when not auto-looting
 
+local KEY_DOWN = {
+    SHIFT = function() return IsShiftKeyDown() end,
+    CTRL = function() return IsControlKeyDown() end,
+    ALT = function() return IsAltKeyDown() end,
+}
+
+local function LootKeyDown()
+    local key = M.db.lootKey
+    if key == nil then return IsModifiedClick(MODCLICK) end   -- binding not taken over (yet)
+    local down = KEY_DOWN[key]
+    return down and down() or false
+end
+
 local function AutoLootApplies()
     local on = M.db.autoLoot and true or false
-    if IsModifiedClick("AUTOLOOTTOGGLE") then on = not on end
+    if LootKeyDown() then on = not on end
     return on
+end
+
+-- Anything (item, coins, currency) still in this slot? LootSlotHasItem is
+-- false for coin slots, so check the slot type too.
+local function SlotFilled(slot)
+    if LootSlotHasItem(slot) then return true end
+    local kind = GetLootSlotType(slot)
+    return kind ~= nil and kind ~= SLOT_NONE
 end
 
 -- Close the window once every item left is one we skip.
 local function CloseIfOnlySkipped()
     if not session then return end
     for slot = 1, GetNumLootItems() do
-        if LootSlotHasItem(slot) and not session.skipped[slot] then return end
+        if SlotFilled(slot) and not session.skipped[slot] then return end
     end
     CloseLoot()
 end
@@ -145,7 +173,7 @@ local function OnLootReady()
     session = { skipped = {} }
     local skippedAny = false
     for slot = GetNumLootItems(), 1, -1 do
-        if LootSlotHasItem(slot) then
+        if SlotFilled(slot) then
             if M:ShouldSkipSlot(slot) then
                 session.skipped[slot] = true
                 skippedAny = true
@@ -188,6 +216,71 @@ frame:SetScript("OnEvent", function(_, event)
     end
 end)
 
+---------------------------------------------------------------------------
+-- The auto-loot key binding
+---------------------------------------------------------------------------
+-- With autoLootDefault at 0, holding the auto-loot key makes the client loot
+-- everything itself, filters or not. So while we're on, the binding is NONE
+-- and LootKeyDown() checks db.lootKey instead. The change is never saved: if
+-- something saves the key bindings meanwhile, we write the real key back.
+
+local keyFrame = CreateFrame("Frame")
+local holdingKey = false     -- binding set to NONE by us this session
+local wantKey                -- "take" / "release" waiting for combat to end
+local savingBindings = false
+
+local function CanBind()
+    return GetModifiedClick and SetModifiedClick and true or false
+end
+
+local function TakeKey(db)
+    if holdingKey or not CanBind() then return end
+    if InCombatLockdown() then wantKey = "take"; keyFrame:RegisterEvent("PLAYER_REGEN_ENABLED"); return end
+    local current = GetModifiedClick(MODCLICK)
+    -- After a crash db.lootKey survives; the binding then still reads as the
+    -- saved (real) key, which wins unless it reads NONE.
+    if db.lootKey == nil or (current and current ~= "NONE") then db.lootKey = current or "NONE" end
+    SetModifiedClick(MODCLICK, "NONE")
+    holdingKey = true
+end
+
+local function ReleaseKey(db)
+    if not holdingKey then db.lootKey = nil; return end
+    if InCombatLockdown() then wantKey = "release"; keyFrame:RegisterEvent("PLAYER_REGEN_ENABLED"); return end
+    SetModifiedClick(MODCLICK, db.lootKey or "NONE")
+    holdingKey = false
+    db.lootKey = nil
+end
+
+keyFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    local want = wantKey
+    wantKey = nil
+    if want == "take" and M.db.tookOver then TakeKey(M.db)
+    elseif want == "release" and not M.db.tookOver then ReleaseKey(M.db) end
+end)
+
+if hooksecurefunc and SaveBindings then
+    hooksecurefunc("SaveBindings", function(set)
+        if not holdingKey or savingBindings then return end
+        local current = GetModifiedClick(MODCLICK)
+        if current and current ~= "NONE" then
+            -- You picked a new auto-loot key (Interface > Controls): that is
+            -- what got saved, so adopt it and hold the binding again.
+            M.db.lootKey = current
+            SetModifiedClick(MODCLICK, "NONE")
+        else
+            -- Something else saved the bindings with our NONE in them: save
+            -- again with the real key.
+            savingBindings = true
+            SetModifiedClick(MODCLICK, M.db.lootKey or "NONE")
+            pcall(SaveBindings, set or GetCurrentBindingSet())
+            SetModifiedClick(MODCLICK, "NONE")
+            savingBindings = false
+        end
+    end)
+end
+
 function M:OnEnable(db)
     if not db.tookOver then
         -- Seed our toggle from the game's setting. Only when taking over:
@@ -196,6 +289,7 @@ function M:OnEnable(db)
         db.tookOver = true
     end
     if GetCVar(CVAR) ~= "0" then SetCVar(CVAR, "0") end
+    TakeKey(db)
     frame:RegisterEvent("LOOT_READY")
     frame:RegisterEvent("LOOT_SLOT_CLEARED")
     frame:RegisterEvent("LOOT_CLOSED")
@@ -203,10 +297,12 @@ function M:OnEnable(db)
     frame:RegisterEvent("PLAYER_LOGOUT")
 end
 
--- Give autoLootDefault back to the game, as our toggle has it now.
+-- Give autoLootDefault (as our toggle has it now) and the auto-loot key
+-- back to the game.
 function M:Release(db)
     frame:UnregisterAllEvents()
     session = nil
+    ReleaseKey(db)
     if db.tookOver then
         -- Hand auto-loot back to the game, as it is set now (the game's
         -- value from before, unless you changed it while we had it).
