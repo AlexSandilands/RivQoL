@@ -36,6 +36,7 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 | `friendlynames` | On the General page. Keeps floating friendly player names off (`UnitNameFriendlyPlayerName 0`). EllesmereUI Nameplates forces it on at every load while its friendly player nameplates are enabled. |
 | `iteminfo` | On the General page. Hold Alt while hovering an item to add its type, subtype, slot, item level and stack size to the tooltip (handy for Loot Filter rules). Options: show always instead of only with Alt, show IDs. |
 | `iconsearch` | On the General page. Adds a search box and a category filter to the icon pickers (new/edit macro, equipment set, guild bank tab). See below. |
+| `groupzone` | On the General page. Shows where players are in the Group Browser (Looking For Group > Browse): the leader's zone on each listing and every member's zone in its tooltip. See below. |
 | `lootfilter` | Off by default. When auto-looting, leaves junk on the corpse instead of picking it up: items on its skip list, or items matching a rule (type/subtype, max quality, max vendor price). Nothing is deleted and your bags are never touched. |
 
 ### Loot filter
@@ -93,6 +94,20 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   has no API for icon names, so `scripts/build-icon-data.py` builds it from the client's data tables
   as exported by [wago.tools](https://wago.tools). Run it again after a game patch adds icons:
   `scripts/build-icon-data.py` (latest WoW Forever build) or `scripts/build-icon-data.py 1.60.1.70790`.
+
+### Group Browser zones
+
+- **Where the zone comes from**: the listing itself, when the server sends the player's zone with it
+  (`areaName` in `C_LFGList.GetSearchResultPlayerInfo`). Then it just shows, for everyone in the group.
+- **Otherwise, /who**: the game only lets addons send a /who from a click, so it can't look players up
+  in the background. Clicking a listing looks up its leader when the zone is missing or more than 5
+  minutes old; the magnifier on a hovered listing looks it up now. One lookup at a time, at most one
+  every 5 seconds (the server limits /who). The tooltip says how old a result is ("3m ago"),
+  "looking up..." or "not found" (offline or hidden).
+- **Quiet**: its /who answers stay out of chat and out of the Who lists. A /who you send yourself
+  always wins: the module's pending lookup is dropped and yours shows as usual.
+- **Show zone on listings** (option): turn the label on listings off and keep only the tooltip.
+  Labels copy the font of the listing's own text, so they match EllesmereUI's skin.
 
 ## Adding a module
 
