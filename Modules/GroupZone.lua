@@ -66,6 +66,7 @@ local pending           -- our query in flight: { key, name, sentAt, silenced, p
 local lastSent = 0      -- GetTime() of the last /who, ours or the user's
 local sendingOurs = false
 local silenceKey, silenceUntil = nil, 0   -- chat filter window for our result
+local silenceTotals = false               -- also drop "N players total" (off once the user's /who runs)
 
 local RefreshAll        -- defined below
 
@@ -132,7 +133,7 @@ function M.Lookup(name, force)
         end
     end
     pending = p
-    silenceKey, silenceUntil = key, now + TIMEOUT + 1
+    silenceKey, silenceUntil, silenceTotals = key, now + TIMEOUT + 1, true
     if C_FriendList.SetWhoToUi then C_FriendList.SetWhoToUi(true) end
 
     sendingOurs = true
@@ -175,7 +176,9 @@ end)
 local function OnAnySendWho()
     if sendingOurs then return end
     lastSent = GetTime()
-    silenceUntil = 0
+    -- Our answer may still arrive: keep hiding its line about our player
+    -- until the original timeout, but let the user's total line through.
+    silenceTotals = false
     if pending then Finish() end
 end
 
@@ -186,6 +189,7 @@ local function ChatFilter(_, _, msg)
     -- The exact player, with or without a realm: |Hplayer:Name[-Realm]:...
     local key = silenceKey:gsub("%p", "%%%0")
     if msg:lower():find("|hplayer:" .. key .. "[%-:|]") then return true end
+    if not silenceTotals then return false end
     if whoTotalPattern == nil then
         whoTotalPattern = false
         if type(WHO_NUM_RESULTS) == "string" then
