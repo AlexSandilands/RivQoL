@@ -97,8 +97,8 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 
 ### Group Browser zones
 
-- **Where it shows**: on each listing, right of its "Roles:" (the leader's location), and in the
-  listing's tooltip after each player.
+- **Where it shows**: on each listing, right-aligned on its bottom line (the leader's location), and
+  in the listing's tooltip after each player.
 - **The zone** comes with the listing (`areaName` in `C_LFGList.GetSearchResultPlayerInfo`), so it
   shows straight away for everyone.
 - **A more specific place** comes from /who. When it names somewhere other than the zone (usually the
@@ -108,7 +108,8 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   - The magnifier at the right of a hovered listing looks up the next player of that listing not
     looked up recently (leader first, then each member, one per click), or the leader again.
   - One lookup at a time, at most one every 5 seconds (the server limits /who). The tooltip says how
-    old a result is ("3m ago") or "looking up...".
+    old a result is ("3m ago") or "looking up...", and the magnifier's tooltip says what the last
+    lookup found (or that the server didn't answer).
 - **Quiet**: its /who answers stay out of chat, and the Who lists don't redraw for them. The game keeps
   only the last /who result, though, so a Who list redrawn later (scrolling, reopening) shows the
   module's last lookup instead of your search. A /who you send yourself always wins: the module's

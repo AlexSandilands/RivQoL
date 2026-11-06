@@ -68,7 +68,10 @@ local sendingOurs = false
 local silenceKey, silenceUntil = nil, 0   -- chat filter window for our result
 local silenceTotals = false               -- also drop "N players total" (off once the user's /who runs)
 
+local lastResult       -- the last lookup's outcome, for the magnifier's tooltip:
+                        -- { name, zone, outcome = "found"|"notfound"|"noanswer"|"yielded", at }
 local RefreshAll        -- defined below
+local RefreshButtonTip  -- defined below
 
 local function IsPending(name)
     return pending ~= nil and pending.key == Key(name)
@@ -84,6 +87,8 @@ local function ZoneFor(name, apiArea)
     if apiArea then
         if c and c.zone and c.zone ~= apiArea then
             return c.zone .. " (" .. apiArea .. ")", "cache", c.at
+        elseif c and c.zone then
+            return apiArea, "cache", c.at   -- /who agreed with the listing
         end
         return apiArea, "api"
     end
@@ -118,6 +123,7 @@ local function Finish()
         C_FriendList.SetWhoToUi(p.prevToUi and true or false)
     end
     RefreshAll()
+    RefreshButtonTip()
 end
 
 -- Looks up `name` with /who. Must run from a click (hardware event).
@@ -156,7 +162,10 @@ function M.Lookup(name, force)
         return
     end
     C_Timer.After(TIMEOUT, function()
-        if pending == p then Finish() end   -- no answer: stays unknown
+        if pending == p then   -- no answer: stays as it was
+            lastResult = { name = p.name, outcome = "noanswer", at = GetTime() }
+            Finish()
+        end
     end)
     RefreshAll()
 end
@@ -174,6 +183,7 @@ whoFrame:SetScript("OnEvent", function()
         end
     end
     cache[p.key] = { zone = zone, at = GetTime() }
+    lastResult = { name = p.name, zone = zone, outcome = zone and "found" or "notfound", at = GetTime() }
     silenceUntil = GetTime() + 1
     -- Next frame, so the silenced frames don't get this very event.
     C_Timer.After(0, function()
@@ -189,7 +199,10 @@ local function OnAnySendWho()
     -- Our answer may still arrive: keep hiding its line about our player
     -- until the original timeout, but let the user's total line through.
     silenceTotals = false
-    if pending then Finish() end
+    if pending then
+        lastResult = { name = pending.name, outcome = "yielded", at = GetTime() }
+        Finish()
+    end
 end
 
 -- Safety net in case the server still prints our result to chat.
@@ -254,13 +267,31 @@ local function ShowButtonTip(btn)
             GameTooltip:AddLine("Click again for the next group member.", 0.7, 0.7, 0.7, true)
         end
     end
+    if lastResult and GetTime() - lastResult.at < 60 then
+        local r, msg = lastResult
+        if r.outcome == "found" then
+            msg = string.format("Last lookup: %s is in %s.", r.name, r.zone)
+        elseif r.outcome == "notfound" then
+            msg = string.format("Last lookup: /who didn't find %s (offline or hidden).", r.name)
+        elseif r.outcome == "noanswer" then
+            msg = string.format("Last lookup: no answer from the server for %s. Try again in a few seconds.", r.name)
+        else
+            msg = string.format("Last lookup (%s) was dropped for your own /who.", r.name)
+        end
+        GameTooltip:AddLine(msg, 0.6, 0.8, 1, true)
+    end
     local wait = CooldownLeft()
     if pending then
-        GameTooltip:AddLine("Waiting for the last lookup.", 1, 0.5, 0.25, true)
+        GameTooltip:AddLine("Looking up " .. pending.name .. "...", 1, 0.5, 0.25, true)
     elseif wait > 0 then
         GameTooltip:AddLine(string.format("Wait %d s (the server limits /who).", math.ceil(wait)), 1, 0.5, 0.25, true)
     end
     GameTooltip:Show()
+end
+
+function RefreshButtonTip()
+    local owner = GameTooltip:IsShown() and GameTooltip:GetOwner()
+    if owner and owner.extras and owner:IsMouseOver() then ShowButtonTip(owner) end
 end
 
 local function ButtonWanted(row, e)
@@ -274,10 +305,9 @@ end
 local function CreateExtras(row)
     local e = {}
     local fs = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmallLeft")
-    fs:SetJustifyH("LEFT")
-    fs:SetWordWrap(true)
-    if fs.SetMaxLines then fs:SetMaxLines(2) end
-    e.zone = fs   -- placed in Decorate, right of the role/count display
+    fs:SetJustifyH("RIGHT")
+    fs:SetWordWrap(false)
+    e.zone = fs   -- placed in Decorate: bottom line, right-aligned
 
     local btn = CreateFrame("Button", nil, row)
     btn:SetSize(14, 14)
@@ -317,47 +347,25 @@ local function CreateExtras(row)
     return e
 end
 
--- Screen x of the right-most visible content in the role/count display
--- ("Roles:" and its icons, or the role counts). Its frame is wider than what it
--- shows, so the frame's own edges don't tell where the content ends.
-local function ContentRight(region, best, depth)
-    local kind = region:GetObjectType()
-    if kind == "FontString" then
-        local text = region:GetText()
-        if region:IsShown() and type(text) == "string" and not IsSecret(text) and text ~= "" then
-            local l, r, w = region:GetLeft(), region:GetRight(), region:GetStringWidth()
-            if l and r then
-                local j = region:GetJustifyH()
-                local x = j == "RIGHT" and r or j == "CENTER" and (l + r + w) / 2 or l + w
-                best = best and math.max(best, x) or x
+-- The row's bottom text line (on Forever the playstyle, "Relaxed"), whose
+-- right side is free. Returns the y offset of its bottom from the row's bottom
+-- and where its text ends (x from the row's left edge), or nil while the row
+-- isn't laid out yet.
+local function BottomLine(row)
+    local rowL, rowB = row:GetLeft(), row:GetBottom()
+    if not (rowL and rowB) then return nil end
+    local best, bestB
+    for _, r in ipairs({ row:GetRegions() }) do
+        if r ~= (rowExtras[row] and rowExtras[row].zone) and r:GetObjectType() == "FontString" and r:IsShown() then
+            local text, b, l = r:GetText(), r:GetBottom(), r:GetLeft()
+            if type(text) == "string" and not IsSecret(text) and text ~= "" and b and l
+                and (not bestB or b < bestB) then
+                best, bestB = r, b
             end
         end
-    elseif kind == "Texture" then
-        if region:IsShown() and (region:GetAlpha() or 0) > 0 and region:GetDrawLayer() ~= "BACKGROUND"
-            and (region:GetTexture() or region.GetAtlas and region:GetAtlas()) then
-            local r = region:GetRight()
-            if r then best = best and math.max(best, r) or r end
-        end
-    elseif region:IsShown() and depth < 4 then
-        for _, r in ipairs({ region:GetRegions() }) do best = ContentRight(r, best, depth + 1) end
-        for _, c in ipairs({ region:GetChildren() }) do best = ContentRight(c, best, depth + 1) end
     end
-    return best
-end
-
--- Where the label goes: x offset from the row's left edge (just right of the
--- roles), y offset of the display's centre from the row's centre, and the
--- room left before the magnifier. nil while the row isn't laid out yet.
-local function LabelSpot(row)
-    local dd = row.DataDisplay
-    local rowL, rowR = row:GetLeft(), row:GetRight()
-    local _, rowY = row:GetCenter()
-    local _, ddY = dd:GetCenter()
-    if not (rowL and rowR and rowY and ddY) then return nil end
-    local right = ContentRight(dd, nil, 0) or dd:GetLeft()
-    if not right then return nil end
-    local x = right - rowL + 10
-    return x, ddY - rowY, (rowR - rowL) - 6 - 14 - 4 - x
+    if not best then return 2, 0 end
+    return bestB - rowB, best:GetLeft() - rowL + best:GetStringWidth()
 end
 
 local Decorate   -- defined below; it retries itself until the row is laid out
@@ -412,11 +420,11 @@ function Decorate(row)
         text = NOTE_COLOR .. "not found|r"
     end
 
-    -- Right of the roles, centred on them; the magnifier at the row's right
-    -- edge. Before the row is laid out nothing can be measured: try again
-    -- next frame.
-    local x, y, room = LabelSpot(row)
-    if not x then
+    -- One right-aligned column on the bottom line (next to "Relaxed"), so every
+    -- row lines up whatever its roles show, with the magnifier at the end.
+    -- Before the row is laid out nothing can be measured: try again next frame.
+    local y, textEnd = BottomLine(row)
+    if not y then
         e.zone:Hide()
         if not e.retry then
             e.retry = true
@@ -426,10 +434,11 @@ function Decorate(row)
         return
     end
     e.retry = nil
+    local room = row:GetWidth() - 6 - 14 - 4 - (textEnd + 12)
     e.button:ClearAllPoints()
-    e.button:SetPoint("RIGHT", row, "RIGHT", -6, y)
+    e.button:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -6, y)
     e.zone:ClearAllPoints()
-    e.zone:SetPoint("LEFT", row, "LEFT", x, y)
+    e.zone:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -(6 + 14 + 4), y)
     CopyFont(e.zone, row.ActivityName)
     e.zone:SetTextColor(ZONE_COLOR[1], ZONE_COLOR[2], ZONE_COLOR[3])
     if text and room >= 30 then
