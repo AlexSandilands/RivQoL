@@ -171,24 +171,31 @@ function M.Lookup(name, force)
 end
 
 local whoFrame = CreateFrame("Frame")
-whoFrame:SetScript("OnEvent", function()
-    local p = pending
-    if not p then return end
-    local zone
-    for i = 1, C_FriendList.GetNumWhoResults() or 0 do
-        local info = C_FriendList.GetWhoInfo(i)
-        if info and Key(Str(info.fullName)) == p.key then
-            zone = Str(info.area)
-            break
-        end
-    end
+-- Records our lookup's answer (zone nil: not found) and ends the query next
+-- frame, so the silenced frames don't get the event that brought it.
+local function Resolve(p, zone)
     cache[p.key] = { zone = zone, at = GetTime() }
     lastResult = { name = p.name, zone = zone, outcome = zone and "found" or "notfound", at = GetTime() }
-    silenceUntil = GetTime() + 1
-    -- Next frame, so the silenced frames don't get this very event.
+    silenceUntil = GetTime() + 1   -- still hide the "1 player total" line that follows
     C_Timer.After(0, function()
         if pending == p then Finish() end
     end)
+end
+
+-- The answer as a Who list update (when the client honours SetWhoToUi).
+whoFrame:SetScript("OnEvent", function()
+    local p = pending
+    if not p then return end
+    for i = 1, C_FriendList.GetNumWhoResults() or 0 do
+        local info = C_FriendList.GetWhoInfo(i)
+        if info and Key(Str(info.fullName)) == p.key then
+            Resolve(p, Str(info.area))
+            return
+        end
+    end
+    -- Not in the list: the answer may come as a chat line instead (below), so
+    -- only an empty list counts as "not found".
+    if (C_FriendList.GetNumWhoResults() or 0) == 0 then Resolve(p, nil) end
 end)
 
 -- The user's own /who (slash command, Who tab, LFG Who tab) goes first: drop
@@ -205,13 +212,32 @@ local function OnAnySendWho()
     end
 end
 
--- Safety net in case the server still prints our result to chat.
+-- On Forever a /who answer with few results arrives as chat lines, e.g.
+-- "[Finny Elim]: Level 16 Dwarf Hunter <Legacy> - Wildbend River", and that
+-- line names the subzone. Our lookup's lines are read here and hidden.
+local function AreaFromWhoLine(msg)
+    local plain = msg:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")
+    local area = plain:match(".* %- (.-)%s*$")
+    return area ~= "" and area or nil
+end
+
 local whoTotalPattern
 local function ChatFilter(_, _, msg)
     if not silenceKey or GetTime() > silenceUntil or type(msg) ~= "string" or IsSecret(msg) then return false end
     -- The exact player, with or without a realm: |Hplayer:Name[-Realm]:...
     local key = silenceKey:gsub("%p", "%%%0")
-    if msg:lower():find("|hplayer:" .. key .. "[%-:|]") then return true end
+    if msg:lower():find("|hplayer:" .. key .. "[%-:|]") then
+        local area = AreaFromWhoLine(msg)
+        if area then
+            if pending and pending.key == silenceKey then
+                Resolve(pending, area)
+            else   -- answered after the list update or the timeout: still worth keeping
+                cache[silenceKey] = { zone = area, at = GetTime() }
+                RefreshAll()
+            end
+        end
+        return true
+    end
     if not silenceTotals then return false end
     if whoTotalPattern == nil then
         whoTotalPattern = false
@@ -221,7 +247,12 @@ local function ChatFilter(_, _, msg)
             whoTotalPattern = "^" .. pat .. "$"
         end
     end
-    return whoTotalPattern and msg:find(whoTotalPattern) ~= nil or false
+    if not (whoTotalPattern and msg:find(whoTotalPattern)) then return false end
+    -- "0 players total": nobody by that name is online (or they're hidden).
+    if pending and pending.key == silenceKey and tonumber(msg:match("%d+")) == 0 then
+        Resolve(pending, nil)
+    end
+    return true
 end
 
 -------------------------------------------------------------------------------
