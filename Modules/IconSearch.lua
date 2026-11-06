@@ -8,14 +8,14 @@
 -- classes and professions whose spells use it, and the item types. The
 -- spells in your spellbook are added at runtime.
 --
--- How it filters: each picker reads its icons from an icon data provider
--- (IconDataProviderMixin). While a search or category is set, the module
--- swaps that provider's GetNumIcons / GetIconByIndex / GetIndexOfIcon for
--- versions that see only the matching icons, and points the grid at them.
--- Everything else (picking, the selected icon, Okay) stays Blizzard's. The
--- provider is only touched once you actually filter; with no filter the
--- swapped methods hand straight back to the originals, and the filter is
--- cleared whenever the picker closes.
+-- How it filters: while a search or category is set, the module builds its
+-- own list of the matching icons (read from the picker's icon data
+-- provider, which it never changes) and points the picker's grid at it.
+-- Blizzard picks the highlighted cell by an icon's index in its full list,
+-- so post-hooks move the highlight to the icon's index in the filtered one.
+-- Picking and Okay only use the icon itself, so they stay Blizzard's. The
+-- filter is cleared whenever the picker closes, and the picker's next show
+-- points the grid back at Blizzard's own list.
 local _, ns = ...
 
 local M = {
@@ -162,63 +162,55 @@ local function SplitWords(text)
 end
 
 -------------------------------------------------------------------------------
--- Provider override
+-- Filtering
 -------------------------------------------------------------------------------
 -- popup -> its filter state
 local states = {}
--- provider -> { popup, original methods }, for providers we have overridden
-local overridden = setmetatable({}, { __mode = "k" })
 
-local function InstallOverrides(state, provider)
-    local o = overridden[provider]
-    if o then o.state = state; return end
-    o = {
-        state = state,
-        GetNumIcons = provider.GetNumIcons,
-        GetIconByIndex = provider.GetIconByIndex,
-        GetIndexOfIcon = provider.GetIndexOfIcon,
-    }
-    overridden[provider] = o
-    provider.GetNumIcons = function(self)
-        local list = o.state.provider == self and o.state.list
-        if list then return #list end
-        return o.GetNumIcons(self)
-    end
-    provider.GetIconByIndex = function(self, index)
-        local list = o.state.provider == self and o.state.list
-        if list then return list[index] end
-        return o.GetIconByIndex(self, index)
-    end
-    provider.GetIndexOfIcon = function(self, icon)
-        local list = o.state.provider == self and o.state.list
-        if not list then return o.GetIndexOfIcon(self, icon) end
-        if icon == QUESTION_MARK then return 1 end
-        for i = 1, #list do
-            if list[i] == icon then return i end
-        end
-        return nil
+-- Index of an icon in the filtered list (the "?" is always 1).
+local function IndexIn(list, icon)
+    if icon == QUESTION_MARK then return 1 end
+    for i = 1, #list do
+        if list[i] == icon then return i end
     end
 end
 
--- Rebuild the filtered list for the popup's current provider and filter
--- (nil list = no filter), then show it.
+-- Blizzard picks the highlighted grid cell by the icon's index in its own,
+-- unfiltered list. While filtering, move it to the icon's index in ours.
+local function Reselect(state)
+    local list = state.list
+    if not list then return end
+    local popup = state.popup
+    local texture = popup.BorderBox.SelectedIconArea.SelectedIconButton:GetIconTexture()
+    popup.IconSelector:SetSelectedIndex(IndexIn(list, texture))
+    if popup.SetSelectedIconText then popup:SetSelectedIconText() end
+end
+
+-- Rebuild the filtered list for the popup's current provider and filter,
+-- then show it. With no filter, hand the grid back to Blizzard's own list.
 local function Apply(state, scrollToTop)
     local popup = state.popup
     local provider = popup.iconDataProvider
     if not provider then return end
+    local selector = popup.IconSelector
     local words = SplitWords(state.query)
-    local active = #words > 0 or state.category ~= "all"
 
-    if active then
+    if #words == 0 and state.category == "all" then
+        state.list = nil
+        state.count:SetText("")
+        if not state.pointed then return end   -- never filtered this time: nothing to undo
+        state.pointed = nil
+        selector:SetSelectionsDataProvider(
+            function(index) return provider:GetIconByIndex(index) end,
+            function() return provider:GetNumIcons() end)
+        if popup.ReevaluateSelectedIcon then popup:ReevaluateSelectedIcon() end
+    else
         Parse()
         if not mySpells then CollectMySpells() end
-        InstallOverrides(state, provider)
-        local o = overridden[provider]
-        state.provider, state.list = provider, nil   -- read the originals while building
         local list, seen = {}, {}
-        list[1] = o.GetIconByIndex(provider, 1)        -- "?" stays first
-        for i = 2, o.GetNumIcons(provider) do
-            local icon = o.GetIconByIndex(provider, i)
+        list[1] = provider:GetIconByIndex(1)   -- "?" stays first
+        for i = 2, provider:GetNumIcons() do
+            local icon = provider:GetIconByIndex(i)
             if icon and not seen[icon] then
                 seen[icon] = true
                 local rec, fileID, looseName = Lookup(icon)
@@ -229,17 +221,12 @@ local function Apply(state, scrollToTop)
         end
         state.list = list
         state.count:SetFormattedText("%d |4icon:icons;", #list - 1)
-    else
-        state.list = nil
-        state.count:SetText("")
+        state.pointed = true
+        selector:SetSelectionsDataProvider(
+            function(index) return list[index] end,
+            function() return #list end)
+        Reselect(state)
     end
-
-    if not (active or overridden[provider]) then return end   -- never filtered: nothing to undo
-    local selector = popup.IconSelector
-    selector:SetSelectionsDataProvider(
-        function(index) return provider:GetIconByIndex(index) end,
-        function() return provider:GetNumIcons() end)
-    if popup.ReevaluateSelectedIcon then popup:ReevaluateSelectedIcon() end
     if scrollToTop and selector.ScrollBox and selector.ScrollBox.ScrollToBegin then
         selector.ScrollBox:ScrollToBegin()
     end
@@ -247,7 +234,7 @@ end
 
 local function Reset(state)
     state.query, state.category = "", "all"
-    state.list = nil
+    state.list, state.pointed = nil, nil
     mySpells = nil
     if state.search then state.search:SetText("") end
     if state.count then state.count:SetText("") end
@@ -405,6 +392,12 @@ local function Attach(popup)
             if state.list then Apply(state, true) end
         end)
     end
+    -- Blizzard re-picks the highlighted cell from its own list here.
+    for _, method in ipairs({ "ReevaluateSelectedIcon", "SetIconFromMouse" }) do
+        if popup[method] then
+            hooksecurefunc(popup, method, function() Reselect(state) end)
+        end
+    end
     -- Blizzard hides the grid while an icon is dragged onto the picker.
     if popup.UpdateStateFromCursorType then
         hooksecurefunc(popup, "UpdateStateFromCursorType", function()
@@ -454,8 +447,9 @@ end
 function M:OnDisable()
     frame:UnregisterEvent("ADDON_LOADED")
     for _, state in pairs(states) do
+        state.query, state.category = "", "all"
+        if state.popup:IsShown() then Apply(state, true) end   -- back to Blizzard's list
         Reset(state)
-        if state.popup:IsShown() then Apply(state, true) end
         SetRowShown(state, false)
     end
 end

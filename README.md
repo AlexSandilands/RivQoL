@@ -83,10 +83,10 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
 - **Category dropdown**: My spells (your spellbook), My class, any class, profession, or item type
   (Weapon > One-Handed Swords...). It combines with the search and with Blizzard's own All/Spell/Item filter.
 - **Hover an icon** to see its file name and what uses it (turn off with "Show icon details on hover").
-- The filter is cleared each time the picker closes. Until you filter, the picker is left untouched;
-  while a filter is set, the module answers the picker's icon list itself, so picking and saving
-  still go through Blizzard's code.
-- The names come from `Data/IconData.lua` (about 1.5 MB, parsed the first time you search). The game
+- The filter is cleared each time the picker closes. While a filter is set, the picker's grid shows
+  the module's own list of matching icons; Blizzard's icon list is never changed, and picking and
+  saving still go through Blizzard's code.
+- The names come from `Data/IconData.lua` (about 1.5 MB, parsed the first time you search or hover an icon). The game
   has no API for icon names, so `scripts/build-icon-data.py` builds it from the client's data tables
   as exported by [wago.tools](https://wago.tools). Run it again after a game patch adds icons:
   `scripts/build-icon-data.py` (latest WoW Forever build) or `scripts/build-icon-data.py 1.60.1.70790`.
