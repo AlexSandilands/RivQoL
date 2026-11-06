@@ -300,6 +300,11 @@ local function Create()
     local title = T.FontString(frame, "title")
     title:SetPoint("TOP", 0, -14)
     title:SetText("RivQoL")
+    -- The addon's icon sits just left of the title.
+    local logo = frame:CreateTexture(nil, "ARTWORK")
+    logo:SetSize(22, 22)
+    logo:SetPoint("RIGHT", title, "LEFT", -6, 0)
+    logo:SetTexture("Interface\\AddOns\\RivQoL\\Media\\Icon")
     local rule = T.Rule(frame, 280, true)
     rule:SetPoint("TOP", title, "BOTTOM", 0, -6)
 

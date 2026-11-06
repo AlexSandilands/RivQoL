@@ -130,3 +130,21 @@ SlashCmdList.RIVQOL = function(msg)
     end
     PrintList()
 end
+
+-- The minimap addon menu (addon compartment) entry named in the .toc: a click
+-- opens the options window, hovering shows a short tooltip. Globals, because
+-- the .toc looks the functions up by name.
+function RivQoL_OnAddonCompartmentClick()
+    if ns.ToggleOptions then ns.ToggleOptions() end
+end
+
+function RivQoL_OnAddonCompartmentEnter(_, menuButtonFrame)
+    GameTooltip:SetOwner(menuButtonFrame, "ANCHOR_LEFT")
+    GameTooltip:SetText("RivQoL")
+    GameTooltip:AddLine("Click to open the options.", 1, 1, 1)
+    GameTooltip:Show()
+end
+
+function RivQoL_OnAddonCompartmentLeave()
+    GameTooltip:Hide()
+end

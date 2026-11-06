@@ -1,5 +1,7 @@
 # RivQoL
 
+<p align="center"><img src="Media/Logo-400.png" alt="RivQoL icon" width="200"></p>
+
 Riv's personal quality-of-life addon for WoW Forever (interface 16001).
 
 ## Install (dev)
@@ -136,6 +138,20 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   pending lookup is dropped and yours shows as usual.
 - **Show zone on listings** (option): turn the label on listings off and keep only the tooltip.
   Labels copy the font of the listing's own text, so they match EllesmereUI's skin.
+
+## Icon
+
+The icon is an "RQ" monogram in the options window's colours. `Media/Logo.svg` is the only source;
+`scripts/build-icon.sh` (needs `rsvg-convert` and `magick`) builds the rest from it:
+
+- `Media/Logo-400.png` and `Media/Logo-512.png`: square PNGs for the CurseForge and Wago project pages (CurseForge needs at least 400x400)
+- `Media/Icon.tga`: 64x64, 32-bit uncompressed with alpha, used in the game
+
+In the game it is set as `## IconTexture` in the `.toc` (AddOns list), as the `## AddonCompartmentFunc` entry
+in the minimap addon menu (click opens the options window) and next to the title of the options window.
+A new media file or `.toc` change needs a full game restart, not `/reload`. The branch was tried in WoW Forever
+(interface 16001) and approved, but which of the three places show the icon was not recorded separately.
+Unsupported `.toc` fields are ignored by the game, so they do no harm.
 
 ## Adding a module
 
