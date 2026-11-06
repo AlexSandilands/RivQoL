@@ -67,6 +67,10 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 - **Always looted**: coins and currencies; anything on the never-skip list; and, unless it is on the
   skip list, quest items, Rare or better items, items whose info isn't cached yet, and (for rules
   with a price limit) items with no vendor price.
+- **Highlight matching items in your bags** (Loot Filter page): with Baganator, items the filter
+  would leave behind get a red tint and a red X in the corner, so you can check your lists and rules.
+  It's a Baganator icon-corner widget ("RivQoL: Loot Filter match", top left by default) that you can
+  move or remove in Baganator's icon settings. The default and other bag UIs aren't supported.
 - When only skipped items are left, the loot window closes and they stay on the corpse. "Announce"
   prints each one in chat.
 

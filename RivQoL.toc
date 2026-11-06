@@ -4,7 +4,7 @@
 ## Author: Riv
 ## Version: 0.1.0
 ## SavedVariables: RivQoLDB
-## OptionalDeps: EllesmereUI, EllesmereUINameplates
+## OptionalDeps: EllesmereUI, EllesmereUINameplates, Baganator
 
 Core.lua
 UI\Skin.lua

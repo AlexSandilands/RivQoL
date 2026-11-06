@@ -46,6 +46,7 @@ local M = {
         rules = {},         -- { name, class, subclass, maxQuality, maxPrice (copper, 0 = any),
                             --   text, notText (tooltip phrases, comma-separated) }, all optional
         announce = true,    -- chat line per skipped item
+        highlight = false,  -- mark matching items in your bags (Baganator)
         -- autoLoot: our auto-loot on/off, seeded from the game's setting
         -- tookOver: true while we hold autoLootDefault at 0
         -- lootKey: the auto-loot key ("SHIFT", "CTRL", "ALT", "NONE") we read the
@@ -802,6 +803,15 @@ function M:BuildOptions(parent, db, y)
         label = "Announce skipped items in chat",
         db = db, key = "announce",
     })
+    _, y = W.Checkbox(parent, y, {
+        label = "Highlight matching items in your bags",
+        tooltip = "Tints the items in your bags that this filter would leave on a corpse, with a red X in the corner, so you can check your lists and rules. Uses a Baganator icon-corner widget (\"RivQoL: Loot Filter match\"), which you can move or remove in Baganator's icon settings. Works whether or not the module is on.",
+        db = db, key = "highlight",
+    })
+    if not M.baganatorRegistered then
+        _, y = W.Text(parent, y, "|cff999999Bag highlighting needs Baganator, which isn't loaded.|r",
+            { x = 30, font = "GameFontHighlightSmall" })
+    end
     local count
     count, y = W.Text(parent, y, "", { font = "GameFontHighlightSmall" })
     function count:Refresh()
@@ -834,6 +844,64 @@ function M:BuildOptions(parent, db, y)
     end
     HookAltClick()
     return Rebuild()
+end
+
+---------------------------------------------------------------------------
+-- Bag highlight (Baganator)
+---------------------------------------------------------------------------
+-- A Baganator icon-corner widget: a small red X in the corner of each bag
+-- item the filter would skip, plus a red tint over the icon that shows and
+-- hides with it. Baganator decides when to call it and where it sits.
+
+local WIDGET_ID = "rivqol_lootfilter"
+
+local function RefreshBags()
+    if M.baganatorRegistered then Baganator.API.RequestItemButtonsRefresh() end
+end
+
+local function RegisterBaganator()
+    if M.baganatorRegistered then return end
+    if not (Baganator and Baganator.API and Baganator.API.RegisterCornerWidget) then return end
+    M.baganatorRegistered = true
+    Baganator.API.RegisterCornerWidget("RivQoL: Loot Filter match", WIDGET_ID, function(_, details)
+        if not (M.db and M.db.highlight and details and details.itemID) then return false end
+        -- nil asks Baganator to try again once the item's data has loaded.
+        if C_Item.IsItemDataCachedByID and not C_Item.IsItemDataCachedByID(details.itemID) then return nil end
+        return M:ShouldSkipItem(details.itemID) and true or false
+    end, function(itemButton)
+        local widget = CreateFrame("Frame", nil, itemButton)
+        widget:SetSize(14, 14)
+        widget.padding = 0
+        local mark = widget:CreateTexture(nil, "OVERLAY")
+        mark:SetAllPoints()
+        mark:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
+        local tint = itemButton:CreateTexture(nil, "OVERLAY", nil, 6)
+        tint:SetAllPoints(itemButton.icon or itemButton)
+        tint:SetColorTexture(1, 0.1, 0.05, 0.35)
+        tint:Hide()
+        widget:SetScript("OnShow", function() tint:Show() end)
+        widget:SetScript("OnHide", function() tint:Hide() end)
+        return widget
+    end, { corner = "top_left", priority = 1 })
+end
+
+-- Lists, rules and the toggle change what's marked.
+ns.RegisterCallback(function(name, key)
+    if name ~= M.name then return end
+    if key == "highlight" or key == "items" or key == "never" or key == "rules" then RefreshBags() end
+end)
+
+if Baganator then
+    RegisterBaganator()
+else
+    local loader = CreateFrame("Frame")
+    loader:RegisterEvent("ADDON_LOADED")
+    loader:SetScript("OnEvent", function(self, _, addon)
+        if addon == "Baganator" then
+            self:UnregisterEvent("ADDON_LOADED")
+            RegisterBaganator()
+        end
+    end)
 end
 
 ns.RegisterModule(M)
