@@ -43,7 +43,9 @@ per addon in EUI options under Blizzard Skins+ > Window Skins > Third-Party Addo
 - **The auto-loot key** (Interface > Controls) still inverts auto-loot. With the CVar at 0 the game
   would loot everything itself while that key is held, so the module also sets the key's binding to
   NONE for the session and checks the key itself. That change is never saved: if the key bindings are
-  saved meanwhile, the real key is written back, and picking a new key there is simply adopted.
+  saved meanwhile, the real key is written back, and picking a new key there (Shift, Ctrl or Alt) is
+  adopted. Interface > Controls shows the key as None meanwhile; to really set it to None, turn the
+  module off first.
 - **Filters only apply when auto-looting.** When you loot by hand (auto-loot off, or the key held),
   the loot window is yours as usual.
 - **Always skip / Never skip lists**: drag an item from your bags onto the slot, or Alt-click it in

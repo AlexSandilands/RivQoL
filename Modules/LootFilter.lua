@@ -162,6 +162,20 @@ local function CloseIfOnlySkipped()
     CloseLoot()
 end
 
+-- Skipped items stay on the corpse, so it can be opened again: report and
+-- count each one only the first time.
+local reported, reportedCount = {}, 0
+local function FirstReport(slot, itemID)
+    local source = GetLootSourceInfo and GetLootSourceInfo(slot)
+    if not source then return true end
+    local key = source .. ":" .. tostring(itemID)   -- slots renumber as others are looted
+    if reported[key] then return false end
+    if reportedCount >= 500 then reported, reportedCount = {}, 0 end
+    reported[key] = true
+    reportedCount = reportedCount + 1
+    return true
+end
+
 local function Announce(link, quantity)
     if not M.db.announce then return end
     ns.Print("left on corpse:", (link or "?") .. ((quantity and quantity > 1) and ("x" .. quantity) or ""))
@@ -180,10 +194,12 @@ local function OnLootReady(clientAutoLoot)
             if M:ShouldSkipSlot(slot) then
                 session.skipped[slot] = true
                 skippedAny = true
-                local _, link = SlotItemID(slot)
-                local quantity = select(3, GetLootSlotInfo(slot))
-                M.skippedCount = M.skippedCount + 1
-                Announce(link, quantity)
+                local itemID, link = SlotItemID(slot)
+                if FirstReport(slot, itemID) then
+                    local quantity = select(3, GetLootSlotInfo(slot))
+                    M.skippedCount = M.skippedCount + 1
+                    Announce(link, quantity)
+                end
             else
                 LootSlot(slot)
             end
@@ -247,6 +263,22 @@ local function TakeKey(db)
     holdingKey = true
 end
 
+-- Bindings were (re)loaded, e.g. late after login or on a switch between
+-- account and character bindings: the real key may be live again.
+local function CheckKey(db)
+    if not db.tookOver or not CanBind() then return end
+    if InCombatLockdown() then wantKey = "take"; keyFrame:RegisterEvent("PLAYER_REGEN_ENABLED"); return end
+    local current = GetModifiedClick(MODCLICK)
+    if holdingKey then
+        if current and current ~= "NONE" then
+            db.lootKey = current
+            SetModifiedClick(MODCLICK, "NONE")
+        end
+    else
+        TakeKey(db)
+    end
+end
+
 local function ReleaseKey(db)
     if not holdingKey then db.lootKey = nil; return end
     if InCombatLockdown() then wantKey = "release"; keyFrame:RegisterEvent("PLAYER_REGEN_ENABLED"); return end
@@ -255,11 +287,19 @@ local function ReleaseKey(db)
     db.lootKey = nil
 end
 
-keyFrame:SetScript("OnEvent", function(self)
+local checkingKey = false
+keyFrame:SetScript("OnEvent", function(self, event)
+    if event == "UPDATE_BINDINGS" then
+        if checkingKey then return end    -- our own SetModifiedClick
+        checkingKey = true
+        CheckKey(M.db)
+        checkingKey = false
+        return
+    end
     self:UnregisterEvent("PLAYER_REGEN_ENABLED")
     local want = wantKey
     wantKey = nil
-    if want == "take" and M.db.tookOver then TakeKey(M.db)
+    if want == "take" and M.db.tookOver then CheckKey(M.db)
     elseif want == "release" and not M.db.tookOver then ReleaseKey(M.db) end
 end)
 
@@ -293,6 +333,7 @@ function M:OnEnable(db)
     end
     if GetCVar(CVAR) ~= "0" then SetCVar(CVAR, "0") end
     TakeKey(db)
+    keyFrame:RegisterEvent("UPDATE_BINDINGS")
     frame:RegisterEvent("LOOT_READY")
     frame:RegisterEvent("LOOT_SLOT_CLEARED")
     frame:RegisterEvent("LOOT_CLOSED")
@@ -305,6 +346,7 @@ end
 function M:Release(db)
     frame:UnregisterAllEvents()
     session = nil
+    keyFrame:UnregisterEvent("UPDATE_BINDINGS")
     ReleaseKey(db)
     if db.tookOver then
         -- Hand auto-loot back to the game, as it is set now (the game's
@@ -595,7 +637,7 @@ function M:BuildOptions(parent, db, y)
     _, y = W.SectionHeader(parent, y, "Looting")
     _, y = W.Checkbox(parent, y, {
         label = "Auto-loot",
-        tooltip = "While this module is on it does the auto-looting and replaces the game's Auto Loot setting (Interface > Controls), which it hands back when turned off. The auto-loot key still inverts it.",
+        tooltip = "While this module is on it does the auto-looting and replaces the game's Auto Loot setting (Interface > Controls), which it hands back when turned off. The auto-loot key still inverts it (it reads as None in Interface > Controls meanwhile).",
         get = function() return M:GetAutoLoot() end,
         set = function(v) M:SetAutoLoot(v) end,
     })
