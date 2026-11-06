@@ -3,6 +3,10 @@
 ## Notes: Riv's personal quality-of-life tweaks for WoW Forever.
 ## Author: Riv
 ## Version: 0.1.0
+## IconTexture: Interface\AddOns\RivQoL\Media\Icon
+## AddonCompartmentFunc: RivQoL_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: RivQoL_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: RivQoL_OnAddonCompartmentLeave
 ## SavedVariables: RivQoLDB
 ## OptionalDeps: EllesmereUI, EllesmereUINameplates, Baganator
 

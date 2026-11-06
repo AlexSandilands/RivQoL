@@ -1,5 +1,7 @@
 # RivQoL
 
+<p align="center"><img src="Media/Logo-400.png" alt="RivQoL icon" width="200"></p>
+
 Riv's personal quality-of-life addon for WoW Forever (interface 16001).
 
 ## Install (dev)
@@ -93,6 +95,20 @@ hover, Morpheus headers. It doesn't depend on, or get re-skinned by, other UI ad
   has no API for icon names, so `scripts/build-icon-data.py` builds it from the client's data tables
   as exported by [wago.tools](https://wago.tools). Run it again after a game patch adds icons:
   `scripts/build-icon-data.py` (latest WoW Forever build) or `scripts/build-icon-data.py 1.60.1.70790`.
+
+## Icon
+
+The icon is an "RQ" monogram in the options window's colours. `Media/Logo.svg` is the only source;
+`scripts/build-icon.sh` (needs `rsvg-convert` and `magick`) builds the rest from it:
+
+- `Media/Logo-400.png` and `Media/Logo-512.png`: square PNGs for the CurseForge and Wago project pages (CurseForge needs at least 400x400)
+- `Media/Icon.tga`: 64x64, 32-bit uncompressed with alpha, used in the game
+
+In the game it is set as `## IconTexture` in the `.toc` (AddOns list), as the `## AddonCompartmentFunc` entry
+in the minimap addon menu (click opens the options window) and next to the title of the options window.
+A new media file or `.toc` change needs a full game restart, not `/reload`. Whether WoW Forever (interface 16001)
+reads `IconTexture` and the addon compartment fields has not been checked in the client yet; unsupported `.toc`
+fields are ignored by the game, so they do no harm.
 
 ## Adding a module
 
