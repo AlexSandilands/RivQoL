@@ -805,7 +805,7 @@ function M:BuildOptions(parent, db, y)
     })
     _, y = W.Checkbox(parent, y, {
         label = "Highlight matching items in your bags",
-        tooltip = "Tints the items in your bags that this filter would leave on a corpse, with a red X in the corner, so you can check your lists and rules. Uses a Baganator icon-corner widget (\"RivQoL: Loot Filter match\"), which you can move or remove in Baganator's icon settings. Works whether or not the module is on.",
+        tooltip = "Makes the items in your bags that this filter would leave on a corpse glow like a proc'd action button, so you can check your lists and rules. Uses a Baganator icon-corner widget (\"RivQoL: Loot Filter match\"), which you can move or remove in Baganator's icon settings. Works whether or not the module is on.",
         db = db, key = "highlight",
     })
     if not M.baganatorRegistered then
@@ -849,14 +849,55 @@ end
 ---------------------------------------------------------------------------
 -- Bag highlight (Baganator)
 ---------------------------------------------------------------------------
--- A Baganator icon-corner widget: a small red X in the corner of each bag
--- item the filter would skip, plus a red tint over the icon that shows and
--- hides with it. Baganator decides when to call it and where it sits.
+-- A Baganator icon-corner widget marks each bag item the filter would skip.
+-- The widget itself is an invisible 1px frame; its OnShow/OnHide drive an
+-- action-button style proc glow around the whole item button, so the mark
+-- follows Baganator's own show/hide logic.
 
 local WIDGET_ID = "rivqol_lootfilter"
 
 local function RefreshBags()
     if M.baganatorRegistered then Baganator.API.RequestItemButtonsRefresh() end
+end
+
+-- The proc glow from action buttons: the modern flipbook where the client
+-- has it, else the classic marching ants. Plays while shown.
+local GLOWS = {
+    { atlas = "UI-HUD-ActionBar-Proc-Loop-Flipbook", rows = 6, columns = 5, frames = 30, duration = 1, scale = 1.4 },
+    { texture = "Interface\\SpellActivationOverlay\\IconAlertAnts", rows = 5, columns = 5, frames = 22,
+      duration = 0.3, frameSize = 48, scale = 1.25 },
+}
+
+function M.CreateGlow(parent)
+    local style = GLOWS[2]
+    if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(GLOWS[1].atlas) then style = GLOWS[1] end
+
+    local glow = CreateFrame("Frame", nil, parent)
+    glow:SetAllPoints()
+    glow:SetFrameLevel(parent:GetFrameLevel() + 10)
+    glow:Hide()
+    local tex = glow:CreateTexture(nil, "OVERLAY")
+    tex:SetPoint("CENTER")
+    if style.atlas then tex:SetAtlas(style.atlas) else tex:SetTexture(style.texture) end
+    local function Fit()
+        local w, h = glow:GetSize()
+        tex:SetSize(w * style.scale, h * style.scale)
+    end
+    glow:SetScript("OnSizeChanged", Fit)
+
+    local group = tex:CreateAnimationGroup()
+    group:SetLooping("REPEAT")
+    local anim = group:CreateAnimation("FlipBook")
+    anim:SetFlipBookRows(style.rows)
+    anim:SetFlipBookColumns(style.columns)
+    anim:SetFlipBookFrames(style.frames)
+    anim:SetDuration(style.duration)
+    anim:SetFlipBookFrameWidth(style.frameSize or 0)
+    anim:SetFlipBookFrameHeight(style.frameSize or 0)
+
+    glow:SetScript("OnShow", function() Fit(); group:Play() end)
+    glow:SetScript("OnHide", function() group:Stop() end)
+    return glow
 end
 
 local function RegisterBaganator()
@@ -870,17 +911,11 @@ local function RegisterBaganator()
         return M:ShouldSkipItem(details.itemID) and true or false
     end, function(itemButton)
         local widget = CreateFrame("Frame", nil, itemButton)
-        widget:SetSize(14, 14)
+        widget:SetSize(1, 1)
         widget.padding = 0
-        local mark = widget:CreateTexture(nil, "OVERLAY")
-        mark:SetAllPoints()
-        mark:SetTexture("Interface\\Buttons\\UI-GroupLoot-Pass-Up")
-        local tint = itemButton:CreateTexture(nil, "OVERLAY", nil, 6)
-        tint:SetAllPoints(itemButton.icon or itemButton)
-        tint:SetColorTexture(1, 0.1, 0.05, 0.35)
-        tint:Hide()
-        widget:SetScript("OnShow", function() tint:Show() end)
-        widget:SetScript("OnHide", function() tint:Hide() end)
+        local glow = M.CreateGlow(itemButton)
+        widget:SetScript("OnShow", function() glow:Show() end)
+        widget:SetScript("OnHide", function() glow:Hide() end)
         return widget
     end, { corner = "top_left", priority = 1 })
 end
