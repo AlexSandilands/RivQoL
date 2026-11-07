@@ -11,7 +11,8 @@ if (( $# > 1 )) || [[ $command_name != deploy && $command_name != rc && $command
     exit 1
 fi
 
-# Same packager the release workflow uses (BigWigsMods/packager@v2).
+# Same packager the release workflow uses (BigWigsMods/packager@v2). It tracks
+# the moving v2 ref on purpose, so a candidate is built exactly as a release is.
 packager_url=https://raw.githubusercontent.com/BigWigsMods/packager/v2/release.sh
 # Marks an AddOns/RivQoL folder as a release candidate this script installed,
 # so it may be replaced again. Any other real folder is left alone.
