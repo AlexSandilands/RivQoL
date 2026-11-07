@@ -31,6 +31,9 @@ git push origin v0.2.0
 - A tag with `alpha` or `beta` in it (`v0.2.0-beta1`) uploads as an Alpha/Beta file instead of a Release.
 - The changelog is built from the commit messages since the previous tag.
 - What goes in the zip is set by `.pkgmeta` (dotfiles and `scripts/` are left out).
+- To test the packaged build before tagging, run `./scripts/deploy.sh rc` (needs a clean worktree).
+  It builds the package locally with the same packager and installs it as a real `AddOns/RivQoL`
+  folder in place of the dev symlink; `./scripts/deploy.sh` switches back.
 - It needs a `CF_API_KEY` repository secret (passed to the packager as `CF_API_TOKEN`): a CurseForge API token from
   <https://authors.curseforge.com/account/api-tokens>.
 
