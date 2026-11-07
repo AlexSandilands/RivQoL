@@ -96,6 +96,10 @@ if [[ $command_name == rc ]]; then
     # package a throwaway clone checked out at this exact commit, tags included.
     git clone -q --shared --no-checkout "$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)" "$work/src"
     git -C "$work/src" checkout -q --detach "$commit"
+    # The packager builds CHANGELOG.md links from origin's URL; use the real one.
+    if origin_url=$(git -C "$repo_root" remote get-url origin 2>/dev/null); then
+        git -C "$work/src" remote set-url origin "$origin_url"
+    fi
     # -d: no upload, -z: no zip; the package directory is all we need.
     if ! bash "$work/release.sh" -t "$work/src" -r "$work/out" -d -z >"$work/packager.log" 2>&1; then
         tail -n 40 "$work/packager.log" >&2
